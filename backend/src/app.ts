@@ -14,10 +14,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/auth', authRoutes);
-app.use('/health', healthRoutes);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/health', healthRoutes);
 
-// Error Handling (Must be last)
+// Error Handling 
 app.use(errorHandler);
 
 export default app;
