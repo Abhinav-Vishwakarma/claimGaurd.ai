@@ -1,0 +1,5 @@
+[
+  { "id": "home", "label": "Admin Home", "path": "/dashboard/home", "icon": "LayoutDashboard" },
+  { "id": "clients", "label": "Manage Clients", "path": "/dashboard/clients", "icon": "Users" },
+  { "id": "register", "label": "Register Client", "path": "/dashboard/register", "icon": "UserPlus" }
+]

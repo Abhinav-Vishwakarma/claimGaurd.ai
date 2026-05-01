@@ -18,3 +18,18 @@ export const getClients = catchAsync(async (req: Request, res: Response) => {
     data: clients,
   });
 });
+
+export const searchUser = catchAsync(async (req: Request, res: Response) => {
+  const { email } = req.query;
+  if (!email || typeof email !== 'string') {
+    const err = new Error('Email query parameter is required');
+    Object.assign(err, { status: 400 });
+    throw err;
+  }
+
+  const user = await adminService.searchUserByEmail(email);
+  res.json({
+    success: true,
+    data: user,
+  });
+});
