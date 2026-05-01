@@ -12,6 +12,7 @@ router.use(authorize('CLIENT'));
 router.get('/overview', controller.overview);
 router.get('/profile', controller.profile);
 router.get('/vault', controller.vault);
+router.delete('/vault/:id', controller.deleteVault);
 
 router.get('/claims', controller.claims);
 router.get('/appeals', controller.appeals);

@@ -87,6 +87,24 @@ export const useUploadVaultItem = () => {
   });
 };
 
+export const useDeleteVaultItem = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest<void>(`${API_BASE}/vault/${id}`, {
+        method: "DELETE",
+      }).catch(handleError);
+    },
+    onSuccess: () => {
+      toast.success("File deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "vault"] });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete file");
+    }
+  });
+};
+
 // 4. Claims History
 export const useClaimsHistory = () => {
   return useQuery({

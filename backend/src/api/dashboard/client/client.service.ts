@@ -74,6 +74,24 @@ export const dashboardClientService = {
     }));
   },
 
+  async deleteVaultItem(userId: string, itemId: string): Promise<void> {
+    const item = await prisma.medicalVaultItem.findUnique({
+      where: { id: itemId },
+    });
+
+    if (!item) {
+      throw new Error('Item not found');
+    }
+
+    if (item.userId !== userId) {
+      throw new Error('Unauthorized');
+    }
+
+    await prisma.medicalVaultItem.delete({
+      where: { id: itemId },
+    });
+  },
+
   async getClaimsHistory(userId: string): Promise<EOBRecordResponse[]> {
     const claimsWithEOBs = await prisma.claim.findMany({
       where: { userId, eob: { isNot: null } },

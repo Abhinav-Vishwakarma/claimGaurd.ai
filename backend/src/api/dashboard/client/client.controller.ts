@@ -23,6 +23,13 @@ export const vault = catchAsync(async (req: Request, res: Response): Promise<voi
   res.json({ success: true, data });
 });
 
+export const deleteVault = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as AuthRequest).user!.id;
+  const itemId = req.params.id as string;
+  await dashboardClientService.deleteVaultItem(userId, itemId);
+  res.json({ success: true, message: 'Item deleted safely' });
+});
+
 export const claims = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const userId = (req as AuthRequest).user!.id;
   const data = await dashboardClientService.getClaimsHistory(userId);

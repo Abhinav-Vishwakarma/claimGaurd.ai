@@ -1,11 +1,12 @@
 import { useState, type ChangeEvent, type DragEvent } from "react";
-import { useMedicalVault, useUploadVaultItem } from "../api/dashboard.api";
-import { FileUp, FileText, Pill, FilePlus, ChevronRight } from "lucide-react";
+import { useMedicalVault, useUploadVaultItem, useDeleteVaultItem } from "../api/dashboard.api";
+import { FileUp, FileText, Pill, FilePlus, ChevronRight, Trash2 } from "lucide-react";
 import type { VaultItemType } from "../types/dashboard.types";
 
 export function VaultPage() {
   const { data: vaultItems, isLoading } = useMedicalVault();
   const uploadMutation = useUploadVaultItem();
+  const deleteMutation = useDeleteVaultItem();
   const [dragActive, setDragActive] = useState(false);
   const [fileType, setFileType] = useState<VaultItemType>("bill");
 
@@ -151,10 +152,7 @@ export function VaultPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {items?.map((item) => (
-                      <a 
-                        href={item.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
+                      <div 
                         key={item.id} 
                         className="group bg-[var(--color-surface)] p-6 rounded-3xl border border-[var(--color-border)] flex flex-col gap-4 transition-all hover:border-[var(--color-primary)] hover:shadow-2xl hover:shadow-[var(--color-primary)]/10 hover:-translate-y-1 active:scale-[0.98]"
                       >
@@ -175,12 +173,29 @@ export function VaultPage() {
                           </p>
                         </div>
                         <div className="pt-4 mt-auto border-t border-[var(--color-border)] flex items-center justify-between">
-                          <span className="text-xs font-bold text-[var(--color-primary)] group-hover:underline flex items-center gap-2">
+                          <a 
+                            href={item.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-2"
+                          >
                             View Document
                             <ChevronRight size={14} />
-                          </span>
+                          </a>
+                          <button
+                            onClick={() => {
+                              if (window.confirm("Are you sure you want to delete this specific file?")) {
+                                deleteMutation.mutate(item.id);
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                            className="text-[var(--color-muted)] hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50"
+                            aria-label="Delete file"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
-                      </a>
+                      </div>
                     ))}
                   </div>
                 </div>

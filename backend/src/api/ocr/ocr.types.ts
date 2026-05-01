@@ -30,7 +30,39 @@ export type ServiceMap = {
   };
 };
 
-// ─── Agent 2 Output: Compliance Officer ──────────────────────────────────────
+// ─── Agent 2 Output: Clinical Validator (The Judge) ───────────────────────────
+
+export type FraudFlag = {
+  type: 'UPCODING' | 'UNBUNDLING' | 'PHANTOM_BILLING' | 'NONE';
+  description: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'NONE';
+};
+
+export type ClinicalValidationReport = {
+  passed: boolean;
+  matched_condition: string | null;
+  qdrant_confidence: number;
+  icd10_specificity: {
+    is_leaf_node: boolean;
+    non_billable_hit: boolean;
+    reason: string;
+  };
+  medical_necessity: {
+    passed: boolean;
+    allowed_cpts: string[];
+    billed_cpts: string[];
+    unauthorized_cpts: string[];
+    reason: string;
+  };
+  fraud_detection: {
+    upcoding: FraudFlag;
+    unbundling: FraudFlag;
+    ai_reasoning: string;
+  };
+  rejection_reasons: string[];
+};
+
+// ─── Agent 3 Output: Compliance Officer ──────────────────────────────────────
 
 export type TriangulationVerdict = 'APPROVED' | 'REJECTED' | 'NEEDS_REVIEW';
 export type PhantomBillingRisk = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -50,7 +82,48 @@ export type ClaimReport = {
   applied_rules: string[];
 };
 
-// ─── Final Pipeline Output ────────────────────────────────────────────────────
+// ─── Agent Event Types (SSE streaming) ────────────────────────────────────────
+
+export type AgentId = 'agent_1' | 'agent_2' | 'agent_3' | 'system';
+
+export type AgentEventType =
+  | 'PIPELINE_START'
+  | 'AGENT_STARTED'
+  | 'AGENT_THINKING'
+  | 'TOOL_CALL'
+  | 'TOOL_RESULT'
+  | 'AGENT_OUTPUT'
+  | 'AGENT_HANDOFF'
+  | 'PIPELINE_COMPLETE'
+  | 'PIPELINE_ERROR';
+
+export type AgentEvent = {
+  seq: number;
+  t: number; // ms since pipeline start
+  agent: AgentId;
+  type: AgentEventType;
+  message?: string;
+  tool?: string;
+  payload?: unknown;
+};
+
+// ─── Final Verdict ────────────────────────────────────────────────────────────
+
+export type PipelineVerdict = 'CLAIMABLE' | 'NOT_CLAIMABLE' | 'NEEDS_REVIEW';
+
+export type FinalPipelineResult = {
+  sessionId: string;
+  verdict: PipelineVerdict;
+  isClaimable: boolean;
+  verdictSummary: string;
+  verdictReasons: string[];
+  serviceMap: ServiceMap | null;
+  validationReport: ClinicalValidationReport | null;
+  gatekeeperReport: unknown | null;
+  eventLog: AgentEvent[];
+};
+
+// ─── Legacy Pipeline Output ───────────────────────────────────────────────────
 
 export type OcrPipelineResult = {
   service_map: ServiceMap;
