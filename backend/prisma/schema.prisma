@@ -110,15 +110,17 @@ model EOBRecord {
 }
 
 model MedicalVaultItem {
-  id         String        @id @default(uuid())
-  userId     String
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type       VaultItemType
-  fileName   String
-  url        String
-  publicId   String?
-  uploadDate DateTime      @default(now())
-  createdAt  DateTime      @default(now())
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          VaultItemType
+  fileName      String
+  url           String
+  publicId      String?
+  uploadDate    DateTime      @default(now())
+  extractedData Json?
+  extractedAt   DateTime?
+  createdAt     DateTime      @default(now())
 }
 
 model Appeal {

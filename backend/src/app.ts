@@ -5,6 +5,7 @@ import authRoutes from './api/auth/auth.routes';
 import aiRoutes from './api/ai/ai.routes';
 import healthRoutes from './api/health/health.routes';
 import clientDashboardRoutes from './api/dashboard/client/client.routes';
+import ocrRoutes from './api/ocr/ocr.routes';
 import { uploadthingHandler } from './api/uploads/uploadthing.routes';
 import { errorHandler } from './middlewares/errorHandler';
 
@@ -22,6 +23,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/health', healthRoutes);
 app.use('/api/v1/dashboard', clientDashboardRoutes); // Connecting Client Dashboard
+app.use('/api/v1/dashboard/ocr', ocrRoutes);         // Clinical Extractor Agent
 
 // Error Handling 
 app.use(errorHandler);
