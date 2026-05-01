@@ -13,3 +13,17 @@ export const extract = catchAsync(async (req: Request, res: Response): Promise<v
 
   res.json({ success: true, data: result });
 });
+
+export const runGatekeeper = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as AuthRequest).user!.id;
+  const { prescriptionVaultId, billVaultId, labReportVaultId } = req.body;
+
+  const result = await ocrService.runGatekeeper({
+    prescriptionVaultId,
+    billVaultId,
+    labReportVaultId,
+    userId,
+  });
+
+  res.json({ success: true, data: result });
+});

@@ -1,5 +1,7 @@
 import prisma from '../../config/prisma';
 import { clinicalExtractor } from '../../agents/clinical-extractor';
+import { integrityGatekeeper } from '../../agents/integrity-gatekeeper';
+import type { ServiceMap } from './ocr.types';
 
 export const ocrService = {
   /**
@@ -41,5 +43,42 @@ export const ocrService = {
     });
 
     return { vaultItem: updated, serviceMap };
+  },
+
+  async runGatekeeper(input: {
+    prescriptionVaultId: string;
+    billVaultId: string;
+    labReportVaultId: string;
+    userId: string;
+  }) {
+    const ids = [input.prescriptionVaultId, input.billVaultId, input.labReportVaultId];
+    const vaultItems = await prisma.medicalVaultItem.findMany({
+      where: {
+        id: { in: ids },
+        userId: input.userId,
+      },
+    });
+
+    if (vaultItems.length !== 3) {
+      const err = new Error('One or more vault items not found or access denied');
+      Object.assign(err, { status: 404 });
+      throw err;
+    }
+
+    const prescription = vaultItems.find((v) => v.id === input.prescriptionVaultId);
+    const bill = vaultItems.find((v) => v.id === input.billVaultId);
+    const labReport = vaultItems.find((v) => v.id === input.labReportVaultId);
+
+    if (!prescription?.extractedData || !bill?.extractedData || !labReport?.extractedData) {
+      const err = new Error('All documents must be OCR processed before running the gatekeeper');
+      Object.assign(err, { status: 400 });
+      throw err;
+    }
+
+    return integrityGatekeeper.run({
+      prescription: prescription.extractedData as unknown as ServiceMap,
+      bill: bill.extractedData as unknown as ServiceMap,
+      labReport: labReport.extractedData as unknown as ServiceMap,
+    });
   },
 };

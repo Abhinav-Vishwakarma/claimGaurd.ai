@@ -8,3 +8,10 @@ export const ocrExtractSchema = z.object({
     docType: z.enum(['prescription', 'bill', 'lab_report']),
   }),
 });
+export const ocrGatekeeperSchema = z.object({
+  body: z.object({
+    prescriptionVaultId: z.string().uuid(),
+    billVaultId: z.string().uuid(),
+    labReportVaultId: z.string().uuid(),
+  }),
+});
