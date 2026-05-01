@@ -19,7 +19,7 @@ export function DocumentSelector({ label, type, items, selectedId, onSelect }: D
         {label}
       </label>
       
-      <div className="grid grid-cols-1 gap-2 max-h-[150px] overflow-y-auto p-1">
+      <div className="grid grid-cols-1 gap-2 max-h-[160px] overflow-y-auto p-1 pr-2 custom-scrollbar">
         {filteredItems.map((item) => (
           <button
             key={item.id}
