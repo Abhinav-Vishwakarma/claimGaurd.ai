@@ -1,6 +1,8 @@
 import { NextFunction, Request, Response } from 'express';
-import { roles, Role } from '../api/auth/auth.types';
+import { AuthUser, roles, Role } from '../api/auth/auth.types';
 import { verifyAccessToken } from '../api/auth/token.service';
+
+type AuthRequest = Request & { user?: AuthUser };
 
 export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
   const [scheme, token] = (req.headers.authorization || '').split(' ');
@@ -12,7 +14,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 
   try {
     const payload = verifyAccessToken(token);
-    req.user = { id: payload.id, email: payload.email, role: payload.role };
+    (req as AuthRequest).user = { id: payload.id, email: payload.email, role: payload.role };
     next();
   } catch {
     res.status(401).json({ success: false, message: 'Invalid bearer token' });
@@ -22,7 +24,9 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
 export const authorize =
   (...allowedRoles: Role[]) =>
   (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
+    const user = (req as AuthRequest).user;
+
+    if (!user || !allowedRoles.includes(user.role)) {
       res.status(403).json({ success: false, message: 'Forbidden' });
       return;
     }

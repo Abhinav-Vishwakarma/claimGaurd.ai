@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { catchAsync } from '../../utils/catchAsync';
 import { authService } from './auth.service';
+import { AuthUser } from './auth.types';
+
+type AuthRequest = Request & { user?: AuthUser };
 
 export const register = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const data = await authService.register(req.body);
@@ -23,5 +26,5 @@ export const logout = catchAsync(async (req: Request, res: Response): Promise<vo
 });
 
 export const me = catchAsync(async (req: Request, res: Response): Promise<void> => {
-  res.json({ success: true, data: { user: req.user } });
+  res.json({ success: true, data: { user: (req as AuthRequest).user } });
 });
