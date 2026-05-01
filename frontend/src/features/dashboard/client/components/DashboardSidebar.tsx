@@ -1,4 +1,3 @@
-import React from "react";
 import navItems from "../config/dashboardNav.json";
 import { SidebarItem } from "./SidebarItem";
 import { LogOut, ChevronLeft, ChevronRight } from "lucide-react";
@@ -41,7 +40,6 @@ export function DashboardSidebar({ isCollapsed, toggleCollapse, onSignOut }: Sid
         {navItems.map((item) => (
           <SidebarItem
             key={item.id}
-            id={item.id}
             label={item.label}
             path={item.path}
             iconName={item.icon}

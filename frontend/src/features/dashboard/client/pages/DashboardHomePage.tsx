@@ -1,4 +1,3 @@
-import React from "react";
 import { useDashboardOverview } from "../api/dashboard.api";
 
 export function DashboardHomePage() {

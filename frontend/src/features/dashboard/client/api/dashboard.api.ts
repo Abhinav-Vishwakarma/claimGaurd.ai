@@ -1,20 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { genUploader } from "uploadthing/client";
+import type { FileRoute } from "uploadthing/types";
 import { toast } from "react-toastify";
 import type { 
   DashboardOverview, 
   UserProfile, 
   MedicalVaultItem, 
   EOBRecord, 
-  AppealLetter 
+  AppealLetter,
+  VaultItemType,
 } from "../types/dashboard.types";
 import { apiRequest } from "../../../../lib/apiClient";
+import { getAccessToken } from "../../../../lib/authStorage";
 
-const API_BASE = "/api/v1/dashboard";
+const API_BASE = "/dashboard";
+type ClientUploadRouter = {
+  vaultUploader: FileRoute<{
+    input: { type: VaultItemType };
+    output: { fileUrl: string };
+    errorShape: { message: string };
+  }>;
+};
 
 const handleError = (error: any) => {
   toast.error(error.message || "An error occurred");
   throw error;
 };
+
+const UPLOADTHING_URL = `${import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1"}/uploadthing`;
+const { uploadFiles } = genUploader<any>({
+  url: UPLOADTHING_URL,
+});
 
 // 1. Dashboard Home
 export const useDashboardOverview = () => {
@@ -49,11 +65,17 @@ export const useMedicalVault = () => {
 export const useUploadVaultItem = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (fileData: FormData) => {
-      return apiRequest<{ success: boolean }>(`${API_BASE}/vault/upload`, {
-        method: "POST",
-        body: fileData as any, // FormData overrides Content-Type properly in fetch
-      }).catch(handleError);
+    mutationFn: async (payload: { file: File; type: VaultItemType }) => {
+      const token = getAccessToken();
+      const [result] = await uploadFiles("vaultUploader", {
+        files: [payload.file],
+        // @ts-ignore - Uploadthing client types may not recognize 'input' dynamically
+        input: { type: payload.type },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
+      if (!result) throw new Error("Upload failed");
+      return result;
     },
     onSuccess: () => {
       toast.success("File uploaded successfully");

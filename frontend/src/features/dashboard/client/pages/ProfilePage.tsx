@@ -1,4 +1,3 @@
-import React from "react";
 import { useUserProfile } from "../api/dashboard.api";
 
 export function ProfilePage() {

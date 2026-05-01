@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { DashboardSidebar } from "./DashboardSidebar";
 
 import { useLogout } from "../../../auth/auth.hooks";
 
 interface DashboardLayoutProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {

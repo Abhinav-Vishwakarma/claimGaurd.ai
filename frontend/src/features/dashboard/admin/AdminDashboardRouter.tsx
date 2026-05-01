@@ -1,4 +1,3 @@
-import React from "react";
 import { useLogout } from "../../auth/auth.hooks";
 
 export function AdminDashboardRouter() {

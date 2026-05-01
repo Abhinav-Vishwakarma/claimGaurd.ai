@@ -1,4 +1,3 @@
-import React from "react";
 import { useAppeals } from "../api/dashboard.api";
 import { Download, Send } from "lucide-react";
 

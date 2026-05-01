@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { useMe } from "../auth/auth.hooks";
 import { DashboardRouter as ClientDashboardRouter } from "./client/DashboardRouter";
 import { HospitalDashboardRouter } from "./hospital/HospitalDashboardRouter";

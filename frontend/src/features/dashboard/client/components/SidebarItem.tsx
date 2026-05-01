@@ -1,16 +1,14 @@
-import React from "react";
 import { navigate, usePath } from "../../../../hooks/usePath";
 import * as LucideIcons from "lucide-react";
 
 interface SidebarItemProps {
-  id: string;
   label: string;
   path: string;
   iconName: string;
   isCollapsed: boolean;
 }
 
-export function SidebarItem({ id, label, path, iconName, isCollapsed }: SidebarItemProps) {
+export function SidebarItem({ label, path, iconName, isCollapsed }: SidebarItemProps) {
   const currentPath = usePath();
   const isActive = currentPath === path || currentPath.startsWith(path + "/");
   

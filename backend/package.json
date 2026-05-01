@@ -19,6 +19,7 @@
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.20.0",
+    "uploadthing": "^7.7.4",
     "zod": "^4.4.1"
   },
   "devDependencies": {

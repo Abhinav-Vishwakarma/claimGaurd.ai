@@ -19,6 +19,8 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default(process.env.JWT_EXPIRES_IN || '7d'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  UPLOADTHING_SECRET: z.string(),
+  UPLOADTHING_APP_ID: z.string(),
 });
 
 const _env = envSchema.safeParse(process.env);

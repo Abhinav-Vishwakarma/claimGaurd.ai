@@ -1,4 +1,3 @@
-import React from "react";
 import { useClaimsHistory } from "../api/dashboard.api";
 
 export function HistoryPage() {

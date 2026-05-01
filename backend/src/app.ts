@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import authRoutes from './api/auth/auth.routes';
 import aiRoutes from './api/ai/ai.routes';
 import healthRoutes from './api/health/health.routes';
+import clientDashboardRoutes from './api/dashboard/client/client.routes';
+import { uploadthingHandler } from './api/uploads/uploadthing.routes';
 import { errorHandler } from './middlewares/errorHandler';
 
 const app = express();
@@ -15,9 +17,11 @@ app.use(express.json({ limit: process.env.MAX_FILE_SIZE || '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
+app.use('/api/v1/uploadthing', uploadthingHandler);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/health', healthRoutes);
+app.use('/api/v1/dashboard', clientDashboardRoutes); // Connecting Client Dashboard
 
 // Error Handling 
 app.use(errorHandler);

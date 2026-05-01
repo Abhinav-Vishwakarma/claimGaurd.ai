@@ -1,3 +1,5 @@
+export type VaultItemType = "prescription" | "bill" | "lab_report";
+
 export interface ClaimSummary {
   id: string;
   status: "pending" | "approved" | "denied";
@@ -27,10 +29,11 @@ export interface UserProfile {
 
 export interface MedicalVaultItem {
   id: string;
-  type: "prescription" | "bill" | "lab_report";
+  type: VaultItemType;
   fileName: string;
   uploadDate: string;
   url: string;
+  publicId?: string | null;
 }
 
 export interface EOBRecord {

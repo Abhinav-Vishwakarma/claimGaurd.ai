@@ -13,14 +13,18 @@ enum Role {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
+  id            String             @id @default(uuid())
+  email         String             @unique
   passwordHash  String
   name          String?
-  role          Role           @default(CLIENT)
+  role          Role               @default(CLIENT)
   refreshTokens RefreshToken[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  memberProfile MemberProfile?
+  claims        Claim[]
+  vaultItems    MedicalVaultItem[]
+  appeals       Appeal[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   @@index([role])
 }
@@ -36,4 +40,95 @@ model RefreshToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+enum PlanType {
+  PPO
+  HMO
+}
+
+enum ClaimStatus {
+  pending
+  approved
+  denied
+}
+
+enum VaultItemType {
+  prescription
+  bill
+  lab_report
+}
+
+enum EOBStatus {
+  processed
+  appealed
+}
+
+enum AppealStatus {
+  drafted
+  submitted
+  resolved
+}
+
+model MemberProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId        String   @unique
+  planType        PlanType @default(PPO)
+  deductibleTotal Float    @default(0)
+  deductibleMet   Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Claim {
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  amount    Float
+  date      DateTime
+  status    ClaimStatus @default(pending)
+  eob       EOBRecord?
+  appeals   Appeal[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model EOBRecord {
+  id                    String    @id @default(uuid())
+  claimId               String    @unique
+  claim                 Claim     @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  dateOfService         DateTime
+  billedAmount          Float
+  allowedAmount         Float
+  paidAmount            Float
+  patientResponsibility Float
+  finalStatus           EOBStatus @default(processed)
+  createdAt             DateTime  @default(now())
+}
+
+model MedicalVaultItem {
+  id         String        @id @default(uuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       VaultItemType
+  fileName   String
+  url        String
+  publicId   String?
+  uploadDate DateTime      @default(now())
+  createdAt  DateTime      @default(now())
+}
+
+model Appeal {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  claimId   String
+  claim     Claim        @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  status    AppealStatus @default(drafted)
+  content   String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }

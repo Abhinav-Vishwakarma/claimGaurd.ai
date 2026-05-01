@@ -1,3 +1,5 @@
+import { getAccessToken } from "./authStorage";
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
 export class ApiError extends Error {
@@ -17,8 +19,10 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
 
-  if (options.token) {
-    headers.set("Authorization", `Bearer ${options.token}`);
+  const token = options.token !== undefined ? options.token : getAccessToken();
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });

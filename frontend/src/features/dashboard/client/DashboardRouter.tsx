@@ -1,4 +1,3 @@
-import React from "react";
 import { usePath } from "../../../hooks/usePath";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { DashboardHomePage } from "./pages/DashboardHomePage";
