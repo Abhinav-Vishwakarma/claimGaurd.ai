@@ -17,7 +17,7 @@ function useAuthMutation<TInput>(mutationFn: (input: TInput) => Promise<AuthResp
     onSuccess: (data) => {
       saveTokens(data);
       queryClient.setQueryData(authKey, { user: data.user });
-      window.history.pushState({}, "", "/home");
+      window.history.pushState({}, "", "/dashboard");
       window.dispatchEvent(new PopStateEvent("popstate"));
     },
   });
