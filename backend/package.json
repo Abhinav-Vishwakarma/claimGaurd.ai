@@ -1,5 +1,9 @@
 {
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/core": "^1.1.42",
+    "@langchain/google-genai": "^2.1.29",
+    "@langchain/qdrant": "^1.0.2",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@qdrant/js-client-rest": "^1.17.0",
@@ -45,6 +49,8 @@
     "start": "node dist/index.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
+    "rag:index-rules": "ts-node src/scripts/index-rules.ts",
+    "rag:search-rules": "ts-node src/scripts/search-rules.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
