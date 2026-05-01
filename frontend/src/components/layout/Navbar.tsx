@@ -1,0 +1,73 @@
+import { useState } from "react";
+import { navItems } from "../../app/config/nav.config";
+import type { LandingContent } from "../../content/landing/landing.types";
+import type { UseLanguageResult } from "../../hooks/useLanguage";
+import type { UseThemeResult } from "../../hooks/useTheme";
+import { navigate } from "../../hooks/usePath";
+import { Container } from "../ui/Container";
+import { LanguageSelector } from "./LanguageSelector";
+import { MobileNav } from "./MobileNav";
+import { ThemeToggle } from "./ThemeToggle";
+
+type NavbarProps = {
+  content: LandingContent;
+  language: UseLanguageResult;
+  theme: UseThemeResult;
+};
+
+export function Navbar({ content, language, theme }: NavbarProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-bg)]/90 backdrop-blur">
+      <Container>
+        <div className="flex min-h-16 items-center justify-between gap-4">
+          <a className="text-lg font-bold text-[var(--color-text)]" href="#top">
+            ClaimGuard.ai
+          </a>
+
+          <nav className="hidden items-center gap-6 md:flex" aria-label={content.nav.label}>
+            {navItems.map((item) => (
+              <a
+                className="text-sm font-medium text-[var(--color-muted)] transition hover:text-[var(--color-text)]"
+                href={item.href}
+                key={item.id}
+              >
+                {content.nav.items[item.labelKey]}
+              </a>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <button
+              className="hidden min-h-10 rounded-md px-3 text-sm font-bold text-[var(--color-muted)] transition hover:text-[var(--color-text)] sm:inline-flex sm:items-center"
+              onClick={() => navigate("/login")}
+              type="button"
+            >
+              Login
+            </button>
+            <button
+              className="hidden min-h-10 rounded-md bg-[var(--color-primary)] px-4 text-sm font-bold text-white transition hover:bg-[var(--color-primary-hover)] sm:inline-flex sm:items-center"
+              onClick={() => navigate("/register")}
+              type="button"
+            >
+              Register
+            </button>
+            <LanguageSelector language={language} />
+            <ThemeToggle labels={content.theme} theme={theme} />
+            <button
+              aria-expanded={isOpen}
+              aria-label={content.nav.menuLabel}
+              className="grid h-10 w-10 place-items-center rounded-md border border-[var(--color-border)] text-[var(--color-text)] md:hidden"
+              onClick={() => setIsOpen((value) => !value)}
+              type="button"
+            >
+              <span className="text-lg leading-none">{isOpen ? "x" : "="}</span>
+            </button>
+          </div>
+        </div>
+      </Container>
+      <MobileNav content={content} isOpen={isOpen} onClose={() => setIsOpen(false)} />
+    </header>
+  );
+}

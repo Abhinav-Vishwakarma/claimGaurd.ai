@@ -6,6 +6,10 @@ const envSchema = z.object({
   PORT: z.string().default('5000'),
   DATABASE_URL: z.string().optional().default('postgresql://user:password@localhost:5432/mydb'),
   REDIS_URL: z.string().optional().default('redis://localhost:6379'),
+  JWT_ACCESS_SECRET: z.string().default(process.env.JWT_SECRET || 'dev-access-secret'),
+  JWT_REFRESH_SECRET: z.string().default(process.env.JWT_SECRET || 'dev-refresh-secret'),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default(process.env.JWT_EXPIRES_IN || '7d'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 
