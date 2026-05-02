@@ -77,8 +77,8 @@ export function DocsPage({ language, theme }: DocsPageProps) {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-8 md:p-12">
-          <div className="max-w-4xl mx-auto text-[var(--color-text)]">
+        <main className="flex-1 overflow-y-auto p-8 md:p-12 lg:pl-16">
+          <div className="max-w-4xl text-[var(--color-text)]">
             {loading ? (
               <div className="animate-pulse text-[var(--color-muted)]">Loading content...</div>
             ) : (
