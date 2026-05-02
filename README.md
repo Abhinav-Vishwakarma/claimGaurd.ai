@@ -16,7 +16,7 @@
 
 **ClaimGuard.ai** automates the end-to-end review of medical insurance claims using a multi-agent AI pipeline — extracting data from uploaded documents, validating clinical codes, detecting billing fraud, and calculating payment amounts — all in real time.
 
-[**Live Demo**](https://claimguard-ai.vercel.app) · [**Documentation**](https://claimguard-ai.vercel.app/docs) · [**Report a Bug**](https://github.com/your-org/claimguard-ai/issues)
+[**Live Demo**](https://claimguard-ai.vercel.app) · [**Documentation**](https://claim-gaurd-ai.vercel.app/docs/installations)
 
 </div>
 
@@ -453,6 +453,6 @@ This project is licensed under the **ISC License** — see the [LICENSE](LICENSE
 
 Built with ❤️ using Node.js, React, Qdrant, Google Gemini, and Groq
 
-**[Documentation](https://claimguard-ai.vercel.app/docs)** · **[Report Issue](https://github.com/your-org/claimguard-ai/issues)**
+**[Documentation](https://claim-gaurd-ai.vercel.app/docs/installations)** 
 
 </div>
