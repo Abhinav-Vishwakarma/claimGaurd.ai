@@ -14,7 +14,7 @@ import { apiRequest } from "../../../../lib/apiClient";
 import { getAccessToken } from "../../../../lib/authStorage";
 
 const API_BASE = "/dashboard";
-type ClientUploadRouter = {
+export type ClientUploadRouter = {
   vaultUploader: FileRoute<{
     input: { type: VaultItemType };
     output: { fileUrl: string };
