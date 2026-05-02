@@ -1,6 +1,6 @@
 // Mirrors backend src/api/ocr/ocr.types.ts — keep in sync
 
-export type AgentId = 'agent_1' | 'agent_2' | 'agent_3' | 'system';
+export type AgentId = 'agent_1' | 'agent_2' | 'agent_3' | 'agent_4' | 'system';
 
 export type AgentEventType =
   | 'PIPELINE_START'
@@ -86,6 +86,7 @@ export interface FinalPipelineResult {
   serviceMap: unknown | null;
   validationReport: ClinicalValidationReport | null;
   gatekeeperReport: GatekeeperReport | null;
+  adjudicationResult: unknown | null;
   eventLog: AgentEvent[];
 }
 
@@ -109,6 +110,12 @@ export const AGENT_META: Record<Exclude<AgentId, 'system'>, { name: string; icon
     icon: '🛡️',
     description: 'Admin checks · Policy verification · Triangulation',
     color: '#10b981',
+  },
+  agent_4: {
+    name: 'The Calculator',
+    icon: '💰',
+    description: 'Price scrubbing · Cost-sharing · Patient responsibility',
+    color: '#8b5cf6',
   },
 };
 

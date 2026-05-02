@@ -6,52 +6,17 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
 enum Role {
   CLIENT
   HOSPITAL
   ADMIN
 }
 
-model User {
-  id            String             @id @default(uuid())
-  email         String             @unique
-  passwordHash  String
-  name          String?
-  role          Role               @default(CLIENT)
-  refreshTokens RefreshToken[]
-  memberProfile MemberProfile?
-  claims        Claim[]
-  vaultItems    MedicalVaultItem[]
-  appeals       Appeal[]
-  claimSessions ClaimSession[]
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-
-  @@index([role])
-}
-
-model RefreshToken {
-  id        String    @id @default(uuid())
-  tokenHash String    @unique
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId])
-  @@index([expiresAt])
-}
-
 enum PlanType {
   PPO
   HMO
-}
-
-enum ClaimStatus {
-  pending
-  approved
-  denied
 }
 
 enum VaultItemType {
@@ -71,32 +36,162 @@ enum AppealStatus {
   resolved
 }
 
+enum ClaimStatus {
+  PENDING           // filed by client, not yet reviewed
+  UNDER_REVIEW      // admin has opened and is running AI check
+  APPROVED          // admin approved full amount
+  PARTIAL_APPROVED  // admin approved partial amount
+  REJECTED          // admin rejected
+}
+
+enum AdminDecision {
+  APPROVED
+  PARTIAL_APPROVED
+  REJECTED
+}
+
+enum ClaimSessionVerdict {
+  CLAIMABLE
+  NOT_CLAIMABLE
+  NEEDS_REVIEW
+}
+
+enum PaymentRequestStatus {
+  PENDING_VERIFICATION  // client submitted bank details, awaiting admin
+  APPROVED              // admin verified and approved payment
+  REJECTED              // admin rejected bank details / payment
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id              String             @id @default(uuid())
+  email           String             @unique
+  passwordHash    String
+  name            String?
+  role            Role               @default(CLIENT)
+  refreshTokens   RefreshToken[]
+  memberProfile   MemberProfile?
+  claims          Claim[]
+  vaultItems      MedicalVaultItem[]
+  appeals         Appeal[]
+  claimSessions   ClaimSession[]
+  paymentRequests PaymentRequest[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model MemberProfile {
-  id              String   @id @default(uuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  memberId        String   @unique
-  planType        PlanType @default(PPO)
-  deductibleTotal Float    @default(0)
-  deductibleMet   Float    @default(0)
-  policyActive    Boolean  @default(true)
-  premiumPaid     Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId         String   @unique
+  planType         PlanType @default(PPO)
+  deductibleTotal  Float    @default(0)
+  deductibleMet    Float    @default(0)
+  copay            Float    @default(20.0)        // fixed dollar copay per visit
+  coinsuranceRate  Float    @default(0.20)        // 20% of allowable
+  coverageLimit    Float    @default(100000.0)    // annual max insurer pays
+  policyActive     Boolean  @default(true)
+  premiumPaid      Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Claim {
-  id        String      @id @default(uuid())
-  userId    String
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider  String
-  amount    Float
-  date      DateTime
-  status    ClaimStatus @default(pending)
-  eob       EOBRecord?
-  appeals   Appeal[]
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id                  String         @id @default(uuid())
+  userId              String
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Evidence documents (vault item IDs)
+  prescriptionVaultId String
+  billVaultId         String
+  labReportVaultId    String
+
+  // Basic claim metadata
+  provider            String         @default("Unknown Provider")
+  billedAmount        Float          @default(0)
+  date                DateTime       @default(now())
+
+  // Status lifecycle
+  status              ClaimStatus    @default(PENDING)
+
+  // AI pipeline link
+  claimSessionId      String?        @unique
+  claimSession        ClaimSession?  @relation(fields: [claimSessionId], references: [id])
+
+  // Financial adjudication output (Agent 4)
+  adjudicationResult  Json?
+
+  // Admin decision
+  adminDecision       AdminDecision?
+  adminApprovedAmount Float?         // for PARTIAL_APPROVED: what admin will pay
+  adminRemark         String?
+  decidedAt           DateTime?
+  decidedByAdminId    String?
+
+  // Re-claim chain
+  parentClaimId       String?
+  parentClaim         Claim?         @relation("ClaimRefiled", fields: [parentClaimId], references: [id])
+  refiledClaims       Claim[]        @relation("ClaimRefiled")
+
+  // Payment
+  paymentRequest      PaymentRequest?
+
+  // Existing
+  eob                 EOBRecord?
+  appeals             Appeal[]
+
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model PaymentRequest {
+  id                  String               @id @default(uuid())
+  claimId             String               @unique
+  claim               Claim                @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Amount to be paid (from admin's decision)
+  grantedAmount       Float
+
+  // Client bank details
+  accountHolderName   String
+  accountNumber       String
+  bankName            String
+  ifscCode            String               // Routing / IFSC / SWIFT
+  additionalNotes     String?
+
+  // Status
+  status              PaymentRequestStatus @default(PENDING_VERIFICATION)
+  adminRemark         String?
+  approvedAt          DateTime?
+  approvedByAdminId   String?
+
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 model EOBRecord {
@@ -138,33 +233,35 @@ model Appeal {
   updatedAt DateTime     @updatedAt
 }
 
-enum ClaimSessionVerdict {
-  CLAIMABLE
-  NOT_CLAIMABLE
-  NEEDS_REVIEW
-}
-
 model ClaimSession {
-  id                   String              @id @default(uuid())
-  userId               String
-  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  prescriptionVaultId  String
-  billVaultId          String
-  labReportVaultId     String
+  id                  String              @id @default(uuid())
+  userId              String
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prescriptionVaultId String
+  billVaultId         String
+  labReportVaultId    String
+
+  // Link to the formal Claim record (set when triggered from admin review)
+  claim               Claim?
+
   // Full ordered list of AgentEvents (the "chat log")
-  eventLog             Json                @default("[]")
+  eventLog            Json                @default("[]")
+
   // Final outputs from each agent
-  extractedServiceMap  Json?
-  validationReport     Json?
-  gatekeeperReport     Json?
+  extractedServiceMap Json?
+  validationReport    Json?
+  gatekeeperReport    Json?
+  adjudicationResult  Json?
+
   // Top-level verdict
-  verdict              ClaimSessionVerdict @default(NEEDS_REVIEW)
-  isClaimable          Boolean             @default(false)
-  verdictReasons       Json                @default("[]")  // string[]
-  verdictSummary       String?             // human-readable one-liner
-  completedAt          DateTime?
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  verdict             ClaimSessionVerdict @default(NEEDS_REVIEW)
+  isClaimable         Boolean             @default(false)
+  verdictReasons      Json                @default("[]")
+  verdictSummary      String?
+
+  completedAt         DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   @@index([userId])
 }

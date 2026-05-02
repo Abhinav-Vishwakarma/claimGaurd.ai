@@ -10,7 +10,7 @@ import {
 export const dashboardClientService = {
   async getOverview(userId: string): Promise<DashboardOverviewResponse> {
     const claimsCount = await prisma.claim.count({
-      where: { userId, status: 'pending' },
+      where: { userId, status: 'PENDING' },
     });
 
     const recentClaims = await prisma.claim.findMany({

@@ -79,6 +79,7 @@ export const generateWithGroq = async (input: AiGenerateInput): Promise<AiGenera
       messages: [{ role: 'user', content: toGroqMessageContent(input) }],
       temperature: input.options?.temperature,
       max_tokens: input.options?.maxTokens,
+      ...(input.options?.responseFormat === 'json_object' && { response_format: { type: 'json_object' } }),
     }),
   });
 

@@ -2,8 +2,10 @@ import prisma from '../../config/prisma';
 import { clinicalExtractor } from '../../agents/clinical-extractor';
 import { clinicalValidator } from '../../agents/clinical-validator';
 import { integrityGatekeeper } from '../../agents/integrity-gatekeeper';
+import { financialAdjudicator, resolvePolicy } from '../../agents/financial-adjudicator';
 import { AgentSession } from '../../utils/agent-session';
 import type { ServiceMap, ClinicalValidationReport, FinalPipelineResult, PipelineVerdict } from './ocr.types';
+import type { FinancialAdjudicationReport } from '../../agents/financial-adjudicator';
 
 export { AgentSession };
 
@@ -59,10 +61,12 @@ export const ocrService = {
       billVaultId: string;
       labReportVaultId: string;
       userId: string;
+      claimId?: string;           // link pipeline to a formal Claim record
+      memberProfileId?: string;   // for financial adjudication policy terms
     },
     session: AgentSession,
   ): Promise<FinalPipelineResult> => {
-    session.start('ClaimGuard multi-agent pipeline starting — 3 agents will analyze your claim');
+    session.start('ClaimGuard 4-agent pipeline starting — The Extractor → The Judge → Gatekeeper → The Calculator');
 
     // ── Load vault items ──────────────────────────────────────────────────────
     const ids = [input.prescriptionVaultId, input.billVaultId, input.labReportVaultId];
@@ -93,6 +97,7 @@ export const ocrService = {
     let serviceMap: ServiceMap | null = null;
     let validationReport: ClinicalValidationReport | null = null;
     let gatekeeperReport: unknown = null;
+    let adjudicationResult: FinancialAdjudicationReport | null = null;
     const allRejectionReasons: string[] = [];
 
     try {
@@ -255,10 +260,42 @@ export const ocrService = {
         payload: gatekeeperReport,
       });
 
-      // ── Final Verdict ─────────────────────────────────────────────────────────
+      // ── Agent 4: Financial Adjudicator (only when claim is valid) ────────────
       const isClaimable = allRejectionReasons.length === 0;
+
+      if (isClaimable) {
+        session.emit({
+          agent: 'agent_3',
+          type: 'AGENT_HANDOFF',
+          message: 'Claim is valid — handing off to Agent 4: The Financial Adjudicator',
+          payload: { to: 'agent_4' },
+        });
+
+        // Load member profile for policy terms
+        const memberProfile = await prisma.memberProfile.findUnique({
+          where: { userId: input.userId },
+        });
+        const policy = resolvePolicy(memberProfile);
+
+        const billedAmount =
+          (serviceMap?.triangulation_data?.billing?.billed_amount as number | null) ?? 0;
+        const billedCpts = serviceMap?.triangulation_data?.billing?.cpt_codes ?? [];
+        const matchedCondition = validationReport?.matched_condition ?? null;
+
+        adjudicationResult = await financialAdjudicator.run(
+          { billedAmount, billedCpts, matchedCondition, policy },
+          session,
+        );
+      } else {
+        session.emit({
+          agent: 'system',
+          type: 'AGENT_THINKING',
+          message: `Skipping financial adjudication — claim is not claimable (${allRejectionReasons.length} issue(s) found)`,
+        });
+      }
+
       const validationPassed = validationReport?.passed ?? true;
-      const gkPassed = gk.is_clean_claim;
+      const gkPassed = (gatekeeperReport as { is_clean_claim: boolean }).is_clean_claim ?? true;
 
       let verdict: PipelineVerdict;
       let verdictSummary: string;
@@ -288,6 +325,7 @@ export const ocrService = {
           extractedServiceMap: serviceMap as object,
           validationReport: validationReport as object,
           gatekeeperReport: gatekeeperReport as object,
+          adjudicationResult: adjudicationResult as object ?? undefined,
           verdict,
           isClaimable,
           verdictReasons: allRejectionReasons,
@@ -295,6 +333,18 @@ export const ocrService = {
           completedAt: new Date(),
         },
       });
+
+      // If triggered from a formal claim, link the session and update adjudication
+      if (input.claimId) {
+        await prisma.claim.update({
+          where: { id: input.claimId },
+          data: {
+            claimSessionId: claimSession.id,
+            adjudicationResult: adjudicationResult as object ?? undefined,
+            status: 'UNDER_REVIEW',
+          },
+        });
+      }
 
       // SSE payload MUST NOT contain eventLog — it creates a circular reference:
       // PIPELINE_COMPLETE.payload.eventLog[n] would contain the PIPELINE_COMPLETE
@@ -309,6 +359,7 @@ export const ocrService = {
         serviceMap,
         validationReport,
         gatekeeperReport,
+        adjudicationResult,
         eventLog: [],
       };
 

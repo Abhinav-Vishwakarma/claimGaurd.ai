@@ -1,5 +1,10 @@
+// pdf-parse ships as CJS. When required in an ESM/ts-node context the module can
+// be wrapped, so the callable may live at .default. We normalise that here.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buffer: Buffer) => Promise<{ text: string; numpages: number; numrender: number; info: unknown; metadata: unknown; version: string }>;
+const _pdfParseRaw = require('pdf-parse');
+type PdfParseResult = { text: string; numpages: number; numrender: number; info: unknown; metadata: unknown; version: string };
+const pdfParse: (buffer: Buffer) => Promise<PdfParseResult> =
+  typeof _pdfParseRaw === 'function' ? _pdfParseRaw : _pdfParseRaw.default;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

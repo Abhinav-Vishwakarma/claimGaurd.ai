@@ -2,7 +2,7 @@
   { "id": "home", "label": "Dashboard Home", "path": "/dashboard/home", "icon": "LayoutDashboard" },
   { "id": "profile", "label": "My Profile", "path": "/dashboard/profile", "icon": "UserCircle" },
   { "id": "vault", "label": "Medical Vault", "path": "/dashboard/vault", "icon": "FolderStack" },
-  { "id": "ai-judge", "label": "AI Claim Judge", "path": "/dashboard/judge", "icon": "Scale" },
+  { "id": "claims", "label": "My Claims", "path": "/dashboard/claims", "icon": "ClipboardList" },
   { "id": "history", "label": "Claims History", "path": "/dashboard/history", "icon": "History" },
   { "id": "appeals", "label": "Appeals Center", "path": "/dashboard/appeals", "icon": "FileText" }
 ]

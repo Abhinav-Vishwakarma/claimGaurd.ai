@@ -44,13 +44,19 @@ Return exactly this JSON:
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const parseFraudResult = (text: string): { upcoding: FraudFlag; unbundling: FraudFlag; ai_reasoning: string } => {
-  const cleaned = text
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
   try {
-    return JSON.parse(cleaned);
-  } catch {
+    // Find the first { and last } to extract just the JSON object
+    const startIdx = text.indexOf('{');
+    const endIdx = text.lastIndexOf('}');
+    
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      const jsonStr = text.substring(startIdx, endIdx + 1);
+      return JSON.parse(jsonStr);
+    }
+    
+    return JSON.parse(text);
+  } catch (err) {
+    console.error('Failed to parse fraud result:', err, 'Raw text:', text);
     return {
       upcoding: { type: 'NONE', description: 'Fraud analysis unavailable', severity: 'NONE' },
       unbundling: { type: 'NONE', description: 'Fraud analysis unavailable', severity: 'NONE' },
@@ -248,7 +254,7 @@ export const clinicalValidator = {
         const fraudResult = await aiService.generate({
           service: 'groq',
           prompt: fraudPrompt,
-          options: { temperature: 0.1, maxTokens: 512 },
+          options: { temperature: 0.1, maxTokens: 1024, responseFormat: 'json_object' },
         });
 
         fraudDetection = parseFraudResult(fraudResult.text);

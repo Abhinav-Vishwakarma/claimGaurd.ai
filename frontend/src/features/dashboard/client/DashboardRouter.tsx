@@ -6,6 +6,8 @@ import { VaultPage } from "./pages/VaultPage";
 import { AiJudgePage } from "./pages/AiJudgePage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { AppealsPage } from "./pages/AppealsPage";
+import { ClaimsPage } from "./pages/ClaimsPage";
+import { ClaimDetailPage } from "./pages/ClaimDetailPage";
 
 export function DashboardRouter() {
   const path = usePath();
@@ -18,6 +20,11 @@ export function DashboardRouter() {
       case path.startsWith("/dashboard/judge"): return <AiJudgePage />;
       case path.startsWith("/dashboard/history"): return <HistoryPage />;
       case path.startsWith("/dashboard/appeals"): return <AppealsPage />;
+      case /^\/dashboard\/claims\/[^/]+$/.test(path): {
+        const id = path.split('/').pop() ?? '';
+        return <ClaimDetailPage claimId={id} />;
+      }
+      case path.startsWith("/dashboard/claims"): return <ClaimsPage />;
       default: return <div>404 Dashboard Route Not Found</div>;
     }
   };

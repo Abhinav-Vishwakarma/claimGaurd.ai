@@ -84,7 +84,7 @@ export type ClaimReport = {
 
 // ─── Agent Event Types (SSE streaming) ────────────────────────────────────────
 
-export type AgentId = 'agent_1' | 'agent_2' | 'agent_3' | 'system';
+export type AgentId = 'agent_1' | 'agent_2' | 'agent_3' | 'agent_4' | 'system';
 
 export type AgentEventType =
   | 'PIPELINE_START'
@@ -120,6 +120,7 @@ export type FinalPipelineResult = {
   serviceMap: ServiceMap | null;
   validationReport: ClinicalValidationReport | null;
   gatekeeperReport: unknown | null;
+  adjudicationResult: unknown | null; // FinancialAdjudicationReport | null
   eventLog: AgentEvent[];
 };
 

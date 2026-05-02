@@ -2,15 +2,17 @@ import { usePath } from "../../../hooks/usePath";
 import { AdminLayout } from "./components/AdminLayout";
 import { AdminHomePage } from "./pages/AdminHomePage";
 import { ClientRegistrationPage } from "./pages/ClientRegistrationPage";
+import { AdminClaimsPage } from "./pages/AdminClaimsPage";
+import { AdminClaimDetailPage } from "./pages/AdminClaimDetailPage";
 
 export function AdminDashboardRouter() {
   const path = usePath();
 
   const renderContent = () => {
     switch (true) {
-      case path === "/dashboard" || path === "/dashboard/home": 
+      case path === "/dashboard" || path === "/dashboard/home":
         return <AdminHomePage />;
-      case path === "/dashboard/register": 
+      case path === "/dashboard/register":
         return <ClientRegistrationPage />;
       case path === "/dashboard/clients":
         return (
@@ -22,7 +24,14 @@ export function AdminDashboardRouter() {
             </div>
           </div>
         );
-      default: 
+      // Claims routes — specific before general
+      case /^\/dashboard\/claims\/admin\/[^/]+$/.test(path): {
+        const id = path.split('/').pop() ?? '';
+        return <AdminClaimDetailPage claimId={id} />;
+      }
+      case path.startsWith("/dashboard/claims"):
+        return <AdminClaimsPage />;
+      default:
         return <div>404 Admin Dashboard Route Not Found</div>;
     }
   };

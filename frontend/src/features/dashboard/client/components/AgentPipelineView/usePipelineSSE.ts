@@ -28,6 +28,7 @@ const initialAgentStates: Record<AgentId, AgentState> = {
   agent_1: 'idle',
   agent_2: 'idle',
   agent_3: 'idle',
+  agent_4: 'idle',
 };
 
 const deriveAgentState = (event: AgentEvent, current: AgentState): AgentState => {
@@ -200,5 +201,5 @@ export function usePipelineSSE() {
     });
   }, []);
 
-  return { ...state, startPipeline, reset };
+  return { ...state, startPipeline, enqueueEvent, reset };
 }

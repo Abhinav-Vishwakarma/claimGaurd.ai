@@ -10,6 +10,7 @@ export type AiAttachment = {
 export type AiGenerateOptions = {
   temperature?: number;
   maxTokens?: number;
+  responseFormat?: 'json_object' | 'text';
 };
 
 export type AiGenerateInput = {

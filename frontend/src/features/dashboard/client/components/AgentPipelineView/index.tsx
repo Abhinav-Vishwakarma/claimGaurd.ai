@@ -16,7 +16,7 @@ interface AgentPipelineViewProps {
   error: string | null;
 }
 
-const AGENTS: Exclude<AgentId, 'system'>[] = ['agent_1', 'agent_2', 'agent_3'];
+const AGENTS: Exclude<AgentId, 'system'>[] = ['agent_1', 'agent_2', 'agent_3', 'agent_4'];
 
 const isHandoffActive = (
   from: Exclude<AgentId, 'system'>,
@@ -41,6 +41,7 @@ export function AgentPipelineView({
 }: AgentPipelineViewProps) {
   const handoff_1_2 = isHandoffActive('agent_1', 'agent_2', activeAgent, agentStates);
   const handoff_2_3 = isHandoffActive('agent_2', 'agent_3', activeAgent, agentStates);
+  const handoff_3_4 = isHandoffActive('agent_3', 'agent_4', activeAgent, agentStates);
 
   return (
     <div className="space-y-6">
@@ -76,7 +77,7 @@ export function AgentPipelineView({
               </div>
               {i < AGENTS.length - 1 && (
                 <DataPacket
-                  active={i === 0 ? handoff_1_2 : handoff_2_3}
+                  active={i === 0 ? handoff_1_2 : i === 1 ? handoff_2_3 : handoff_3_4}
                   label="📄"
                   color={AGENT_META[AGENTS[i + 1]].color}
                 />
