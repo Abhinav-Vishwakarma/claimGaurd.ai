@@ -172,6 +172,8 @@ export function AiJudgePage() {
               activeAgent={pipeline.activeAgent}
               activeTool={pipeline.activeTool}
               events={pipeline.events}
+              bufferedEvents={pipeline.bufferedEvents}
+              receivedEvents={pipeline.receivedEvents}
               finalResult={pipeline.finalResult}
               error={pipeline.error}
             />

@@ -378,6 +378,8 @@ export function AdminClaimDetailPage({ claimId }: { claimId: string }) {
           activeAgent={pipeline.activeAgent}
           activeTool={pipeline.activeTool}
           events={pipeline.events}
+          bufferedEvents={pipeline.bufferedEvents}
+          receivedEvents={pipeline.receivedEvents}
           finalResult={showVerdict ? pipeline.finalResult : null}
           error={pipeline.error}
         />

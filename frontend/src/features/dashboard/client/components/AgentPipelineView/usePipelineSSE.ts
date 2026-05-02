@@ -11,11 +11,13 @@ import type {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 // Minimum delay between event playback steps (ms) — for smooth animation
-const MIN_EVENT_DELAY = 350;
+const EVENT_PLAYBACK_DELAY = 1000;
 
 export interface PipelineState {
   status: PipelineStatus;
   events: AgentEvent[];
+  bufferedEvents: number;
+  receivedEvents: number;
   agentStates: Record<AgentId, AgentState>;
   activeAgent: AgentId | null;
   activeTool: string | null;
@@ -49,6 +51,8 @@ export function usePipelineSSE() {
   const [state, setState] = useState<PipelineState>({
     status: 'idle',
     events: [],
+    bufferedEvents: 0,
+    receivedEvents: 0,
     agentStates: { ...initialAgentStates },
     activeAgent: null,
     activeTool: null,
@@ -102,6 +106,7 @@ export function usePipelineSSE() {
       return {
         ...prev,
         events: [...prev.events, event],
+        bufferedEvents: Math.max(0, prev.bufferedEvents - 1),
         agentStates: newAgentStates,
         activeAgent: event.type === 'PIPELINE_ERROR' ? null : event.agent !== 'system' ? event.agent : prev.activeAgent,
         activeTool,
@@ -116,11 +121,16 @@ export function usePipelineSSE() {
     });
 
 
-    setTimeout(playNextEvent, MIN_EVENT_DELAY);
+    setTimeout(playNextEvent, EVENT_PLAYBACK_DELAY);
   }, []);
 
   const enqueueEvent = useCallback((event: AgentEvent) => {
     eventQueue.current.push(event);
+    setState((prev) => ({
+      ...prev,
+      bufferedEvents: eventQueue.current.length,
+      receivedEvents: prev.receivedEvents + 1,
+    }));
     if (!isPlaying.current) {
       isPlaying.current = true;
       playNextEvent();
@@ -138,6 +148,8 @@ export function usePipelineSSE() {
     setState({
       status: 'running',
       events: [],
+      bufferedEvents: 0,
+      receivedEvents: 0,
       agentStates: { ...initialAgentStates },
       activeAgent: null,
       activeTool: null,
@@ -188,6 +200,7 @@ export function usePipelineSSE() {
       setState((prev) => ({
         ...prev,
         status: 'error',
+        bufferedEvents: eventQueue.current.length,
         error: (err as Error).message || 'Failed to connect to pipeline',
       }));
     }
@@ -199,6 +212,8 @@ export function usePipelineSSE() {
     setState({
       status: 'idle',
       events: [],
+      bufferedEvents: 0,
+      receivedEvents: 0,
       agentStates: { ...initialAgentStates },
       activeAgent: null,
       activeTool: null,
