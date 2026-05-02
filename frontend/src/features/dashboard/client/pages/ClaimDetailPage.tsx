@@ -342,7 +342,7 @@ export function ClaimDetailPage({ claimId }: { claimId: string }) {
                       ? 'Your bank details are being verified by admin.'
                       : claim.paymentRequest!.status === 'APPROVED'
                         ? `Payment of $${claim.paymentRequest!.grantedAmount.toFixed(2)} has been approved! Transfer in progress.`
-                        : `Payment rejected. ${claim.paymentRequest?.adminRemark ?? ''}`}
+                        : `Payment rejected. ${(claim.paymentRequest as any)?.adminRemark ?? ''}`}
                   </p>
                 </div>
               </div>

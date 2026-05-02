@@ -21,7 +21,7 @@ const AGENTS: Exclude<AgentId, 'system'>[] = ['agent_1', 'agent_2', 'agent_3', '
 const isHandoffActive = (
   from: Exclude<AgentId, 'system'>,
   to: Exclude<AgentId, 'system'>,
-  activeAgent: AgentId | null,
+  _activeAgent: AgentId | null,
   agentStates: Record<AgentId, AgentState>,
 ): boolean => {
   // packet flies when the "from" agent is done and "to" agent is active/thinking

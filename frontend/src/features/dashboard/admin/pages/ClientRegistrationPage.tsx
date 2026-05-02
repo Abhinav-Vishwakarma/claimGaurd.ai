@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRegisterClient, useSearchUser } from "../api/admin.api";
 import { useDebounce } from "../../../../hooks/useDebounce";
-import { Shield, User, Mail, Search, Check, AlertCircle, Info } from "lucide-react";
+import { Shield, User, Search, Check, AlertCircle, Info } from "lucide-react";
 
 export function ClientRegistrationPage() {
   const [searchEmail, setSearchEmail] = useState("");

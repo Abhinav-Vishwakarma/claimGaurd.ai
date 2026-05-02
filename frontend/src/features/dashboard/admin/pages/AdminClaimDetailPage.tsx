@@ -258,7 +258,7 @@ export function AdminClaimDetailPage({ claimId }: { claimId: string }) {
 
   if (!claim) return <div className="text-[var(--color-muted)] text-center py-12">Claim not found.</div>;
 
-  const adj = (claim.adjudicationResult ?? claim.claimSession?.adjudicationResult) as AdjudicationResult | null;
+  const adj = (claim.adjudicationResult ?? (claim.claimSession as any)?.adjudicationResult) as AdjudicationResult | null;
 
   // Use adjudication from live pipeline result if available, otherwise from DB
   const liveAdj = pipeline.finalResult?.adjudicationResult as AdjudicationResult | null;
