@@ -19,7 +19,7 @@
 
 **ClaimGuard.ai** automates the end-to-end review of medical insurance claims using a multi-agent AI pipeline — extracting data from uploaded documents, validating clinical codes, detecting billing fraud, and calculating payment amounts — all in real time.
 
-[**Live Demo**](https://claimguard-ai.vercel.app) · [**Project Demo Video**](https://youtu.be/NdUPj_UV0hw) · [**Documentation**](https://claim-gaurd-ai.vercel.app/docs/installations)
+[**Live Demo**](https://claim-gaurd-ai.vercel.app/) · [**Project Demo Video**](https://youtu.be/NdUPj_UV0hw) · [**Documentation**](https://claim-gaurd-ai.vercel.app/docs/installations)
 
 </div>
 
