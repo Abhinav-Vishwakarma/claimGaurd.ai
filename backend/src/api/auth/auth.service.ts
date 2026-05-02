@@ -60,7 +60,7 @@ export const authService = {
     return { user: authUser, ...tokens };
   },
 
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string): Promise<{ user: AuthUser } & TokenPair> {
     const payload = verifyRefreshToken(refreshToken);
     const savedToken = await prisma.refreshToken.findFirst({
       where: {
@@ -82,7 +82,7 @@ export const authService = {
     const tokens = signTokenPair(authUser);
     await saveRefreshToken(authUser.id, tokens.refreshToken);
 
-    return tokens;
+    return { user: authUser, ...tokens };
   },
 
   async logout(refreshToken: string): Promise<void> {
