@@ -49,8 +49,8 @@ export function AdminSidebar({ isCollapsed, toggleCollapse, onSignOut }: Sidebar
       </nav>
 
       {/* Footer / Controls */}
-      <div className="p-4 border-t border-[var(--color-border)] flex flex-col gap-2">
-        <div className={`flex items-center ${isCollapsed ? "justify-center" : "px-2"}`}>
+      <div className={`p-4 border-t border-[var(--color-border)] flex ${isCollapsed ? 'flex-col items-center gap-4' : 'flex-row items-center justify-between gap-2'}`}>
+        <div className="flex-shrink-0">
           <ThemeToggle labels={content.theme} theme={theme} />
         </div>
         
@@ -58,12 +58,12 @@ export function AdminSidebar({ isCollapsed, toggleCollapse, onSignOut }: Sidebar
           onClick={onSignOut}
           title="Sign Out"
           className={`
-            w-full flex items-center p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors
-            ${isCollapsed ? "justify-center" : "justify-start"}
+            flex items-center p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors
+            ${isCollapsed ? "justify-center w-full" : "justify-center flex-1"}
           `}
         >
           <LogOut size={20} />
-          {!isCollapsed && <span className="ml-3 font-medium text-sm">Sign Out</span>}
+          {!isCollapsed && <span className="ml-2 font-medium text-sm">Sign Out</span>}
         </button>
       </div>
     </aside>

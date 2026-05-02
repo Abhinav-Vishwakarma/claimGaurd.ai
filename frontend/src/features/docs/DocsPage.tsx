@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { Navbar } from "../../components/layout/Navbar";
-import { Footer } from "../../components/layout/Footer";
 import { landingContent } from "../../content/landing";
 import type { UseLanguageResult } from "../../hooks/useLanguage";
 import type { UseThemeResult } from "../../hooks/useTheme";
@@ -101,9 +100,6 @@ export function DocsPage({ language, theme }: DocsPageProps) {
                 {markdown}
               </ReactMarkdown>
             )}
-          </div>
-          <div className="mt-16">
-            <Footer />
           </div>
         </main>
       </div>

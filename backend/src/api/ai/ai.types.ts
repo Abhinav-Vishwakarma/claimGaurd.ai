@@ -19,6 +19,14 @@ export type AiGenerateInput = {
   prompt: string;
   attachments?: AiAttachment[];
   options?: AiGenerateOptions;
+  audit?: {
+    logger?: { addPhase: (...args: any[]) => void };
+    phase: string;
+    agent: string;
+    inputSnapshot?: Record<string, unknown>;
+    outputSnapshot?: Record<string, unknown>;
+    issues?: Array<Record<string, unknown>>;
+  };
 };
 
 export type AiUsage = {

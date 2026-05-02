@@ -1,10 +1,12 @@
 import { aiService } from '../api/ai/ai.service';
-import { searchClaimRules } from '../tools/rule-engine';
+import type { ClinicalValidationReport, FraudFlag, ServiceMap } from '../api/ocr/ocr.types';
 import { loadRules } from '../rag/rule-documents';
-import type { ServiceMap, ClinicalValidationReport, FraudFlag } from '../api/ocr/ocr.types';
+import { searchClaimRules } from '../tools/rule-engine';
 import type { AgentSession } from '../utils/agent-session';
-
-// ─── Fraud Detection Prompt ───────────────────────────────────────────────────
+import {
+  PipelineAuditLogger,
+  evaluateFalsePositiveRisk,
+} from '../utils/pipeline-audit';
 
 const buildFraudPrompt = (
   conditionName: string,
@@ -40,7 +42,7 @@ Before formulating your final response, internally ask yourself:
 8. Any mismatch or anomaly?
 
 STRICT RULES:
-1. Return ONLY a raw JSON object — NO markdown, NO code fences, NO explanation.
+1. Return ONLY a raw JSON object - NO markdown, NO code fences, NO explanation.
 2. Analyze specifically for UPCODING and UNBUNDLING based on your self-questioning analysis.
 
 Return exactly this JSON:
@@ -58,19 +60,15 @@ Return exactly this JSON:
   "ai_reasoning": "<Provide a step-by-step summary of your self-questioning deductions before concluding>"
 }`;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 const parseFraudResult = (text: string): { upcoding: FraudFlag; unbundling: FraudFlag; ai_reasoning: string } => {
   try {
-    // Find the first { and last } to extract just the JSON object
     const startIdx = text.indexOf('{');
     const endIdx = text.lastIndexOf('}');
-    
+
     if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      const jsonStr = text.substring(startIdx, endIdx + 1);
-      return JSON.parse(jsonStr);
+      return JSON.parse(text.substring(startIdx, endIdx + 1));
     }
-    
+
     return JSON.parse(text);
   } catch (err) {
     console.error('Failed to parse fraud result:', err, 'Raw text:', text);
@@ -82,22 +80,45 @@ const parseFraudResult = (text: string): { upcoding: FraudFlag; unbundling: Frau
   }
 };
 
-// ─── Agent 2: Clinical Validator ──────────────────────────────────────────────
-
 export type ClinicalValidatorInput = {
   prescription: ServiceMap;
   bill: ServiceMap;
 };
 
+const buildCandidateAudit = (
+  candidates: Awaited<ReturnType<typeof searchClaimRules>>,
+  billedCpts: string[],
+) =>
+  candidates.map((candidate, index) => {
+    const allowed = candidate.metadata.cptCodes ?? [];
+    const overlap = billedCpts.filter((cpt) => allowed.includes(cpt));
+    return {
+      condition: candidate.metadata.conditionName,
+      score: candidate.score,
+      allowed_cpts: allowed,
+      overlap_with_billed_cpts: overlap,
+      rejected_reason:
+        index === 0
+          ? 'Selected as top semantic match'
+          : overlap.length === 0
+            ? 'Rejected because no billed CPT overlap was found'
+            : 'Rejected because candidate scored lower than the top match',
+    };
+  });
+
 export const clinicalValidator = {
-  async run(input: ClinicalValidatorInput, session: AgentSession): Promise<ClinicalValidationReport> {
+  async run(
+    input: ClinicalValidatorInput,
+    session: AgentSession,
+    auditLogger?: PipelineAuditLogger,
+  ): Promise<ClinicalValidationReport> {
     const { prescription, bill } = input;
     const rejectionReasons: string[] = [];
 
     session.emit({
       agent: 'agent_2',
       type: 'AGENT_STARTED',
-      message: 'Clinical Validator (The Judge) activated — running 3-phase medical validation',
+      message: 'Clinical Validator (The Judge) activated - running 3-phase medical validation',
     });
 
     const billedCpts = bill.triangulation_data.billing.cpt_codes || [];
@@ -105,16 +126,13 @@ export const clinicalValidator = {
     const orderedService = prescription.triangulation_data.prescription.ordered_service;
     const billedAmount = bill.triangulation_data.billing.billed_amount;
 
-    // ── Phase 1: ICD-10 Specificity via Qdrant Semantic Search ─────────────────
     session.emit({
       agent: 'agent_2',
       type: 'AGENT_THINKING',
       message: 'Phase 1: Building semantic query for ICD-10 specificity check...',
     });
 
-    const semanticQuery = [prescriptionReason, orderedService, ...billedCpts]
-      .filter(Boolean)
-      .join(' ');
+    const semanticQuery = [prescriptionReason, orderedService, ...billedCpts].filter(Boolean).join(' ');
 
     session.emit({
       agent: 'agent_2',
@@ -130,9 +148,11 @@ export const clinicalValidator = {
     let reasoningTraps: string[] = [];
     let isLeafNode = true;
     let nonBillableHit = false;
+    let candidateAudit: Array<Record<string, unknown>> = [];
 
     try {
-      const searchResults = await searchClaimRules(semanticQuery, 1);
+      const searchResults = await searchClaimRules(semanticQuery, 5);
+      candidateAudit = buildCandidateAudit(searchResults, billedCpts);
 
       if (searchResults.length > 0) {
         const top = searchResults[0];
@@ -150,54 +170,80 @@ export const clinicalValidator = {
           payload: { matchedCondition, qdrantConfidence, allowedCpts, nonBillableIcd10 },
         });
 
-        // Check non-billable ICD-10
-        session.emit({
-          agent: 'agent_2',
-          type: 'AGENT_THINKING',
-          message: `Checking ICD-10 specificity — non-billable codes for this condition: [${nonBillableIcd10.join(', ')}]`,
-        });
-
-        const prescriptionText = `${prescriptionReason} ${orderedService}`.toLowerCase();
+        const prescriptionText = `${prescriptionReason ?? ''} ${orderedService ?? ''}`.toLowerCase();
         nonBillableHit = nonBillableIcd10.some(
           (code) => code !== 'N/A' && prescriptionText.includes(code.toLowerCase()),
         );
 
         if (nonBillableHit) {
           isLeafNode = false;
-          const reason = `Claim references a non-billable (parent category) ICD-10 code. Codes ${nonBillableIcd10.join(', ')} are not billable — use the specific leaf node variant.`;
-          rejectionReasons.push(reason);
+          rejectionReasons.push(
+            `Claim references a non-billable (parent category) ICD-10 code. Codes ${nonBillableIcd10.join(', ')} are not billable - use the specific leaf node variant.`,
+          );
         }
       } else {
         session.emit({
           agent: 'agent_2',
           type: 'TOOL_RESULT',
           tool: 'qdrant_searchClaimRules',
-          message: 'No matching condition found in rules database — low confidence match',
+          message: 'No matching condition found in rules database - low confidence match',
           payload: { matchedCondition: null, qdrantConfidence: 0 },
         });
       }
+
+      auditLogger?.addPhase({
+        phase: 'agent_2_qdrant_semantic_match',
+        agent: 'agent_2',
+        status: searchResults.length > 0 ? 'ok' : 'warn',
+        input_snapshot: {
+          semantic_query: semanticQuery,
+        },
+        output_snapshot: {
+          matched_condition: matchedCondition,
+          matched_reason: matchedCondition ? 'Highest scoring semantic result from Qdrant' : 'No candidate matched',
+          returned_candidates: candidateAudit,
+        },
+        field_audit: [],
+        issues:
+          searchResults.length > 0
+            ? []
+            : [{ code: 'NO_QDRANT_MATCH', message: 'No matching condition found in Qdrant' }],
+      });
     } catch (err) {
       session.emit({
         agent: 'agent_2',
         type: 'TOOL_RESULT',
         tool: 'qdrant_searchClaimRules',
-        message: `Qdrant search failed: ${(err as Error).message} — falling back to rules.json`,
+        message: `Qdrant search failed: ${(err as Error).message} - falling back to rules.json`,
       });
 
-      // Fallback: load rules.json directly and find best match by keyword
+      auditLogger?.addPhase({
+        phase: 'agent_2_qdrant_semantic_match',
+        agent: 'agent_2',
+        status: 'error',
+        input_snapshot: {
+          semantic_query: semanticQuery,
+        },
+        output_snapshot: {
+          error: (err as Error).message,
+        },
+        field_audit: [],
+        issues: [{ code: 'QDRANT_ERROR', message: (err as Error).message }],
+      });
+
       try {
         const rules = loadRules();
-        const fallbackCondition = rules.conditions.find((c) =>
-          billedCpts.some((cpt) => c.allowed_cpt_codes.some((a) => a.code === cpt)),
+        const fallbackCondition = rules.conditions.find((condition) =>
+          billedCpts.some((cpt) => condition.allowed_cpt_codes.some((allowed) => allowed.code === cpt)),
         );
         if (fallbackCondition) {
           matchedCondition = fallbackCondition.name;
-          allowedCpts = fallbackCondition.allowed_cpt_codes.map((c) => c.code);
+          allowedCpts = fallbackCondition.allowed_cpt_codes.map((entry) => entry.code);
           nonBillableIcd10 = fallbackCondition.icd10.non_billable;
           reasoningTraps = fallbackCondition.reasoning_traps;
         }
       } catch {
-        // ignore fallback failure
+        // Keep fallback silent to avoid changing behavior.
       }
     }
 
@@ -205,30 +251,56 @@ export const clinicalValidator = {
       is_leaf_node: isLeafNode,
       non_billable_hit: nonBillableHit,
       reason: nonBillableHit
-        ? `Non-billable ICD-10 category code detected. Use the specific leaf node.`
+        ? 'Non-billable ICD-10 category code detected. Use the specific leaf node.'
         : matchedCondition
           ? `ICD-10 specificity check passed for condition: ${matchedCondition}`
-          : 'Could not verify ICD-10 specificity — no matching condition found in rules database',
+          : 'Could not verify ICD-10 specificity - no matching condition found in rules database',
     };
-
-    // ── Phase 2: Medical Necessity — CPT Allow-List Check ──────────────────────
 
     session.emit({
       agent: 'agent_2',
       type: 'AGENT_THINKING',
-      message: `Phase 2: Checking CPT codes against allowed list — Billed: [${billedCpts.join(', ')}], Allowed: [${allowedCpts.join(', ')}]`,
+      message: `Phase 2: Checking CPT codes against allowed list - Billed: [${billedCpts.join(', ')}], Allowed: [${allowedCpts.join(', ')}]`,
     });
 
-    const unauthorizedCpts = allowedCpts.length > 0
-      ? billedCpts.filter((cpt) => !allowedCpts.includes(cpt))
-      : [];
+    const cptAllowlistAudit = billedCpts.map((cpt) => ({
+      cpt_code: cpt,
+      decision: allowedCpts.includes(cpt) ? 'allowed' : 'rejected',
+      blocking_rule: allowedCpts.includes(cpt)
+        ? null
+        : `CPT ${cpt} is not in the matched allow-list for ${matchedCondition || 'the condition'}`,
+    }));
 
+    const unauthorizedCpts = allowedCpts.length > 0 ? billedCpts.filter((cpt) => !allowedCpts.includes(cpt)) : [];
     const medicalNecessityPassed = unauthorizedCpts.length === 0;
 
     if (!medicalNecessityPassed) {
-      const reason = `Unauthorized CPT codes for ${matchedCondition || 'this condition'}: [${unauthorizedCpts.join(', ')}]. These procedures are not medically necessary for the diagnosed condition.`;
-      rejectionReasons.push(reason);
+      rejectionReasons.push(
+        `Unauthorized CPT codes for ${matchedCondition || 'this condition'}: [${unauthorizedCpts.join(', ')}]. These procedures are not medically necessary for the diagnosed condition.`,
+      );
     }
+
+    auditLogger?.addPhase({
+      phase: 'agent_2_cpt_allowlist_check',
+      agent: 'agent_2',
+      status: medicalNecessityPassed ? 'ok' : 'warn',
+      input_snapshot: {
+        matched_condition: matchedCondition,
+        billed_cpts: billedCpts,
+        allowed_cpts: allowedCpts,
+      },
+      output_snapshot: {
+        decisions: cptAllowlistAudit,
+      },
+      field_audit: [],
+      issues: cptAllowlistAudit
+        .filter((entry) => entry.decision === 'rejected')
+        .map((entry) => ({
+          code: 'CPT_REJECTED',
+          field: 'triangulation_data.billing.cpt_codes',
+          message: String(entry.blocking_rule),
+        })),
+    });
 
     const medicalNecessity = {
       passed: medicalNecessityPassed,
@@ -240,8 +312,6 @@ export const clinicalValidator = {
         : `${unauthorizedCpts.length} unauthorized CPT code(s) detected: ${unauthorizedCpts.join(', ')}`,
     };
 
-    // ── Phase 3: Fraud Detection via Groq ──────────────────────────────────────
-
     session.emit({
       agent: 'agent_2',
       type: 'AGENT_THINKING',
@@ -249,6 +319,11 @@ export const clinicalValidator = {
     });
 
     let fraudDetection: ClinicalValidationReport['fraud_detection'];
+    let falsePositiveRisk = {
+      score: 'LOW',
+      explanation: 'Fraud analysis was skipped.',
+      categories: [] as string[],
+    };
 
     if (matchedCondition && reasoningTraps.length > 0) {
       const fraudPrompt = buildFraudPrompt(
@@ -259,12 +334,24 @@ export const clinicalValidator = {
         orderedService,
         prescriptionReason,
       );
+      const starvationIssues = [];
+
+      if (!orderedService || !prescriptionReason) {
+        starvationIssues.push({
+          code: 'CONTEXT_STARVATION',
+          message: 'orderedService or reason is null in the fraud prompt context',
+          values: {
+            orderedService,
+            reason: prescriptionReason,
+          },
+        });
+      }
 
       session.emit({
         agent: 'agent_2',
         type: 'TOOL_CALL',
         tool: 'groq_llama3_fraud_analysis',
-        message: 'Sending claim context to Groq (llama-3.3-70b) for fraud pattern analysis...',
+        message: 'Sending claim context to Groq for fraud pattern analysis...',
       });
 
       try {
@@ -272,15 +359,57 @@ export const clinicalValidator = {
           service: 'groq',
           prompt: fraudPrompt,
           options: { temperature: 0.1, maxTokens: 1024, responseFormat: 'json_object' },
+          audit: {
+            logger: auditLogger,
+            phase: 'agent_2_fraud_llm_call',
+            agent: 'agent_2',
+            inputSnapshot: {
+              matched_condition: matchedCondition,
+              billed_cpts: billedCpts,
+            },
+            issues: starvationIssues,
+          },
         });
 
         fraudDetection = parseFraudResult(fraudResult.text);
+        falsePositiveRisk = evaluateFalsePositiveRisk(
+          allowedCpts,
+          fraudDetection.unbundling.type !== 'NONE',
+        );
+
+        auditLogger?.addPhase({
+          phase: 'agent_2_fraud_detection',
+          agent: 'agent_2',
+          status: starvationIssues.length > 0 || falsePositiveRisk.score !== 'LOW' ? 'warn' : 'ok',
+          input_snapshot: {
+            prompt: fraudPrompt,
+            matched_condition: matchedCondition,
+            orderedService,
+            reason: prescriptionReason,
+          },
+          output_snapshot: {
+            raw_response: fraudResult.text,
+            parsed_fraud_result: fraudDetection,
+            false_positive_risk_score: falsePositiveRisk.score,
+            false_positive_risk_explanation: falsePositiveRisk.explanation,
+          },
+          field_audit: [],
+          issues: [
+            ...starvationIssues,
+            ...(falsePositiveRisk.score !== 'LOW'
+              ? [{
+                  code: 'HIGH_FALSE_POSITIVE_RISK',
+                  message: falsePositiveRisk.explanation,
+                }]
+              : []),
+          ],
+        });
 
         session.emit({
           agent: 'agent_2',
           type: 'TOOL_RESULT',
           tool: 'groq_llama3_fraud_analysis',
-          message: `Fraud analysis complete — Upcoding: ${fraudDetection.upcoding.type} (${fraudDetection.upcoding.severity}), Unbundling: ${fraudDetection.unbundling.type} (${fraudDetection.unbundling.severity})`,
+          message: `Fraud analysis complete - Upcoding: ${fraudDetection.upcoding.type} (${fraudDetection.upcoding.severity}), Unbundling: ${fraudDetection.unbundling.type} (${fraudDetection.unbundling.severity})`,
           payload: fraudDetection,
         });
 
@@ -295,34 +424,92 @@ export const clinicalValidator = {
           agent: 'agent_2',
           type: 'TOOL_RESULT',
           tool: 'groq_llama3_fraud_analysis',
-          message: `Groq analysis failed: ${(err as Error).message} — using deterministic fallback`,
+          message: `Groq analysis failed: ${(err as Error).message} - using deterministic fallback`,
         });
 
-        // Deterministic fallback: keyword match against reasoning_traps
         const trapText = reasoningTraps.join(' ').toLowerCase();
         const hasUpcoding = trapText.includes('upcode') || trapText.includes('complex visit');
         const hasUnbundling = trapText.includes('unbundl') || trapText.includes('separate billing');
 
         fraudDetection = {
           upcoding: hasUpcoding
-            ? { type: 'UPCODING', description: reasoningTraps.find(t => t.toLowerCase().includes('upcode')) || 'Potential upcoding pattern', severity: 'MEDIUM' }
+            ? {
+                type: 'UPCODING',
+                description: reasoningTraps.find((entry) => entry.toLowerCase().includes('upcode')) || 'Potential upcoding pattern',
+                severity: 'MEDIUM',
+              }
             : { type: 'NONE', description: 'No upcoding patterns detected', severity: 'NONE' },
           unbundling: hasUnbundling
-            ? { type: 'UNBUNDLING', description: reasoningTraps.find(t => t.toLowerCase().includes('unbundl')) || 'Potential unbundling pattern', severity: 'MEDIUM' }
+            ? {
+                type: 'UNBUNDLING',
+                description: reasoningTraps.find((entry) => entry.toLowerCase().includes('unbundl')) || 'Potential unbundling pattern',
+                severity: 'MEDIUM',
+              }
             : { type: 'NONE', description: 'No unbundling patterns detected', severity: 'NONE' },
-          ai_reasoning: 'Deterministic fallback used — AI fraud analysis was unavailable. Manual review recommended.',
+          ai_reasoning: 'Deterministic fallback used - AI fraud analysis was unavailable. Manual review recommended.',
         };
+
+        falsePositiveRisk = evaluateFalsePositiveRisk(
+          allowedCpts,
+          fraudDetection.unbundling.type !== 'NONE',
+        );
+
+        auditLogger?.addPhase({
+          phase: 'agent_2_fraud_detection',
+          agent: 'agent_2',
+          status: 'warn',
+          input_snapshot: {
+            prompt: fraudPrompt,
+            matched_condition: matchedCondition,
+            orderedService,
+            reason: prescriptionReason,
+          },
+          output_snapshot: {
+            raw_response: null,
+            parsed_fraud_result: fraudDetection,
+            false_positive_risk_score: falsePositiveRisk.score,
+            false_positive_risk_explanation: falsePositiveRisk.explanation,
+          },
+          field_audit: [],
+          issues: [
+            ...starvationIssues,
+            { code: 'FRAUD_LLM_FALLBACK', message: (err as Error).message },
+            ...(falsePositiveRisk.score !== 'LOW'
+              ? [{
+                  code: 'HIGH_FALSE_POSITIVE_RISK',
+                  message: falsePositiveRisk.explanation,
+                }]
+              : []),
+          ],
+        });
       }
     } else {
       fraudDetection = {
-        upcoding: { type: 'NONE', description: 'No condition matched — skipped', severity: 'NONE' },
-        unbundling: { type: 'NONE', description: 'No condition matched — skipped', severity: 'NONE' },
+        upcoding: { type: 'NONE', description: 'No condition matched - skipped', severity: 'NONE' },
+        unbundling: { type: 'NONE', description: 'No condition matched - skipped', severity: 'NONE' },
         ai_reasoning: 'Fraud analysis skipped: no matching condition found in rules database.',
       };
+
+      auditLogger?.addPhase({
+        phase: 'agent_2_fraud_detection',
+        agent: 'agent_2',
+        status: 'warn',
+        input_snapshot: {
+          matched_condition: matchedCondition,
+          orderedService,
+          reason: prescriptionReason,
+        },
+        output_snapshot: {
+          parsed_fraud_result: fraudDetection,
+          false_positive_risk_score: falsePositiveRisk.score,
+          false_positive_risk_explanation: falsePositiveRisk.explanation,
+        },
+        field_audit: [],
+        issues: [{ code: 'FRAUD_SKIPPED', message: 'Fraud analysis skipped because no condition was matched' }],
+      });
     }
 
     const passed = rejectionReasons.length === 0;
-
     const report: ClinicalValidationReport = {
       passed,
       matched_condition: matchedCondition,
@@ -337,8 +524,8 @@ export const clinicalValidator = {
       agent: 'agent_2',
       type: 'AGENT_OUTPUT',
       message: passed
-        ? `✅ Clinical validation PASSED for "${matchedCondition}" — no issues found`
-        : `❌ Clinical validation FAILED — ${rejectionReasons.length} issue(s) detected`,
+        ? `Clinical validation PASSED for "${matchedCondition}" - no issues found`
+        : `Clinical validation FAILED - ${rejectionReasons.length} issue(s) detected`,
       payload: report,
     });
 

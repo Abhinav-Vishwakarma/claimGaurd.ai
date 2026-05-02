@@ -1,19 +1,54 @@
-import prisma from '../../config/prisma';
 import { clinicalExtractor } from '../../agents/clinical-extractor';
 import { clinicalValidator } from '../../agents/clinical-validator';
-import { integrityGatekeeper } from '../../agents/integrity-gatekeeper';
 import { financialAdjudicator, resolvePolicy } from '../../agents/financial-adjudicator';
+import { integrityGatekeeper } from '../../agents/integrity-gatekeeper';
+import prisma from '../../config/prisma';
 import { AgentSession } from '../../utils/agent-session';
-import type { ServiceMap, ClinicalValidationReport, FinalPipelineResult, PipelineVerdict } from './ocr.types';
+import {
+  PipelineAuditLogger,
+  buildCriticalNullIssues,
+  buildServiceMapFieldAudit,
+  reconcileServiceMaps,
+} from '../../utils/pipeline-audit';
 import type { FinancialAdjudicationReport } from '../../agents/financial-adjudicator';
+import type {
+  ClinicalValidationReport,
+  FinalPipelineResult,
+  PipelineVerdict,
+  ServiceMap,
+} from './ocr.types';
 
 export { AgentSession };
 
+const logCachedServiceMapAudit = (
+  auditLogger: PipelineAuditLogger,
+  docType: 'prescription' | 'bill' | 'lab_report',
+  filename: string,
+  serviceMap: ServiceMap,
+) => {
+  const { fieldAudit, dataCompletenessScore } = buildServiceMapFieldAudit(serviceMap);
+  auditLogger.addPhase({
+    phase: `agent_1_extraction_${docType}`,
+    agent: 'agent_1',
+    status: 'warn',
+    input_snapshot: {
+      filename,
+      doc_type: docType,
+      source: 'cached_extracted_data',
+    },
+    output_snapshot: {
+      parsed_service_map: serviceMap,
+      data_completeness_score: dataCompletenessScore,
+    },
+    field_audit: fieldAudit,
+    issues: [
+      { code: 'CACHED_EXTRACTION', message: 'Using cached extraction; raw prompt/response unavailable for this run' },
+      ...buildCriticalNullIssues(serviceMap),
+    ],
+  });
+};
+
 export const ocrService = {
-  /**
-   * Runs the clinical extractor agent on a vault item, then
-   * persists the ServiceMap JSON back to the MedicalVaultItem record.
-   */
   extract: async (input: {
     vaultItemId: string;
     fileUrl: string;
@@ -21,7 +56,6 @@ export const ocrService = {
     docType: 'prescription' | 'bill' | 'lab_report';
     userId: string;
   }) => {
-    // Guard: ensure the vault item belongs to this user
     const vaultItem = await prisma.medicalVaultItem.findFirst({
       where: { id: input.vaultItemId, userId: input.userId },
     });
@@ -32,14 +66,12 @@ export const ocrService = {
       throw err;
     }
 
-    // Run Agent 1: Clinical Extractor
     const serviceMap = await clinicalExtractor.extract({
       fileUrl: input.fileUrl,
       filename: input.filename,
       docType: input.docType,
     });
 
-    // Persist extracted data back to the vault item
     const updated = await prisma.medicalVaultItem.update({
       where: { id: input.vaultItemId },
       data: {
@@ -51,24 +83,19 @@ export const ocrService = {
     return { vaultItem: updated, serviceMap };
   },
 
-  /**
-   * Runs the full 3-agent pipeline over SSE, then saves the entire
-   * session (event log + all reports + final verdict) to the DB.
-   */
   runFullPipeline: async (
     input: {
       prescriptionVaultId: string;
       billVaultId: string;
       labReportVaultId: string;
       userId: string;
-      claimId?: string;           // link pipeline to a formal Claim record
-      memberProfileId?: string;   // for financial adjudication policy terms
+      claimId?: string;
+      memberProfileId?: string;
     },
     session: AgentSession,
   ): Promise<FinalPipelineResult> => {
-    session.start('ClaimGuard 4-agent pipeline starting — The Extractor → The Judge → Gatekeeper → The Calculator');
+    session.start('ClaimGuard 4-agent pipeline starting - The Extractor -> The Judge -> Gatekeeper -> The Calculator');
 
-    // ── Load vault items ──────────────────────────────────────────────────────
     const ids = [input.prescriptionVaultId, input.billVaultId, input.labReportVaultId];
     const vaultItems = await prisma.medicalVaultItem.findMany({
       where: { id: { in: ids }, userId: input.userId },
@@ -80,11 +107,15 @@ export const ocrService = {
       throw err;
     }
 
-    const prescriptionItem = vaultItems.find((v) => v.id === input.prescriptionVaultId)!;
-    const billItem = vaultItems.find((v) => v.id === input.billVaultId)!;
-    const labReportItem = vaultItems.find((v) => v.id === input.labReportVaultId)!;
+    const prescriptionItem = vaultItems.find((item) => item.id === input.prescriptionVaultId)!;
+    const billItem = vaultItems.find((item) => item.id === input.billVaultId)!;
+    const labReportItem = vaultItems.find((item) => item.id === input.labReportVaultId)!;
+    const auditLogger = await PipelineAuditLogger.create([
+      { vault_item_id: prescriptionItem.id, filename: prescriptionItem.fileName, doc_type: 'prescription' },
+      { vault_item_id: billItem.id, filename: billItem.fileName, doc_type: 'bill' },
+      { vault_item_id: labReportItem.id, filename: labReportItem.fileName, doc_type: 'lab_report' },
+    ]);
 
-    // ── Create ClaimSession record early (so we have an ID to reference) ──────
     const claimSession = await prisma.claimSession.create({
       data: {
         userId: input.userId,
@@ -101,14 +132,12 @@ export const ocrService = {
     const allRejectionReasons: string[] = [];
 
     try {
-      // ── Agent 1: Clinical Extractor ──────────────────────────────────────────
       session.emit({
         agent: 'agent_1',
         type: 'AGENT_STARTED',
-        message: 'Clinical Extractor activated — detecting file types and routing each document',
+        message: 'Clinical Extractor activated - detecting file types and routing each document',
       });
 
-      // ── Extract prescription ─────────────────────────────────────────────────
       let prescriptionMap: ServiceMap;
       if (prescriptionItem.extractedData) {
         session.emit({
@@ -117,6 +146,7 @@ export const ocrService = {
           message: `Using cached extraction for "${prescriptionItem.fileName}" (already processed)`,
         });
         prescriptionMap = prescriptionItem.extractedData as unknown as ServiceMap;
+        logCachedServiceMapAudit(auditLogger, 'prescription', prescriptionItem.fileName, prescriptionMap);
       } else {
         session.emit({
           agent: 'agent_1',
@@ -128,6 +158,7 @@ export const ocrService = {
           filename: prescriptionItem.fileName,
           docType: 'prescription',
           session,
+          auditLogger,
         });
         await prisma.medicalVaultItem.update({
           where: { id: prescriptionItem.id },
@@ -135,7 +166,6 @@ export const ocrService = {
         });
       }
 
-      // ── Extract bill ─────────────────────────────────────────────────────────
       let billMap: ServiceMap;
       if (billItem.extractedData) {
         session.emit({
@@ -144,6 +174,7 @@ export const ocrService = {
           message: `Using cached extraction for "${billItem.fileName}" (already processed)`,
         });
         billMap = billItem.extractedData as unknown as ServiceMap;
+        logCachedServiceMapAudit(auditLogger, 'bill', billItem.fileName, billMap);
       } else {
         session.emit({
           agent: 'agent_1',
@@ -155,6 +186,7 @@ export const ocrService = {
           filename: billItem.fileName,
           docType: 'bill',
           session,
+          auditLogger,
         });
         await prisma.medicalVaultItem.update({
           where: { id: billItem.id },
@@ -162,7 +194,6 @@ export const ocrService = {
         });
       }
 
-      // ── Extract lab report ───────────────────────────────────────────────────
       let labReportMap: ServiceMap;
       if (labReportItem.extractedData) {
         session.emit({
@@ -171,6 +202,7 @@ export const ocrService = {
           message: `Using cached extraction for "${labReportItem.fileName}" (already processed)`,
         });
         labReportMap = labReportItem.extractedData as unknown as ServiceMap;
+        logCachedServiceMapAudit(auditLogger, 'lab_report', labReportItem.fileName, labReportMap);
       } else {
         session.emit({
           agent: 'agent_1',
@@ -182,6 +214,7 @@ export const ocrService = {
           filename: labReportItem.fileName,
           docType: 'lab_report',
           session,
+          auditLogger,
         });
         await prisma.medicalVaultItem.update({
           where: { id: labReportItem.id },
@@ -189,13 +222,12 @@ export const ocrService = {
         });
       }
 
-      serviceMap = prescriptionMap; // Use prescription as primary service map
-
+      serviceMap = prescriptionMap;
 
       session.emit({
         agent: 'agent_1',
         type: 'AGENT_OUTPUT',
-        message: '✅ All documents extracted — patient data structured',
+        message: 'All documents extracted - patient data structured',
         payload: {
           prescription: prescriptionMap,
           bill: billMap,
@@ -210,10 +242,10 @@ export const ocrService = {
         payload: { to: 'agent_2' },
       });
 
-      // ── Agent 2: Clinical Validator (The Judge) ──────────────────────────────
       validationReport = await clinicalValidator.run(
         { prescription: prescriptionMap, bill: billMap },
         session,
+        auditLogger,
       );
 
       if (!validationReport.passed) {
@@ -227,11 +259,10 @@ export const ocrService = {
         payload: { to: 'agent_3' },
       });
 
-      // ── Agent 3: Integrity Gatekeeper ────────────────────────────────────────
       session.emit({
         agent: 'agent_3',
         type: 'AGENT_STARTED',
-        message: 'Integrity Gatekeeper activated — running admin, policy, and triangulation checks',
+        message: 'Integrity Gatekeeper activated - running admin, policy, and triangulation checks',
       });
 
       session.emit({
@@ -240,11 +271,14 @@ export const ocrService = {
         message: 'Verifying patient ID consistency, provider NPI, date chronology, and policy status...',
       });
 
-      gatekeeperReport = await integrityGatekeeper.run({
-        prescription: prescriptionMap,
-        bill: billMap,
-        labReport: labReportMap,
-      });
+      gatekeeperReport = await integrityGatekeeper.run(
+        {
+          prescription: prescriptionMap,
+          bill: billMap,
+          labReport: labReportMap,
+        },
+        auditLogger,
+      );
 
       const gk = gatekeeperReport as { is_clean_claim: boolean; rejection_reasons: string[] };
       if (!gk.is_clean_claim) {
@@ -255,30 +289,27 @@ export const ocrService = {
         agent: 'agent_3',
         type: 'AGENT_OUTPUT',
         message: gk.is_clean_claim
-          ? '✅ Integrity check PASSED — clean claim confirmed'
-          : `❌ Integrity check FAILED — ${gk.rejection_reasons.length} issue(s) found`,
+          ? 'Integrity check PASSED - clean claim confirmed'
+          : `Integrity check FAILED - ${gk.rejection_reasons.length} issue(s) found`,
         payload: gatekeeperReport,
       });
 
-      // ── Agent 4: Financial Adjudicator (only when claim is valid) ────────────
       const isClaimable = allRejectionReasons.length === 0;
 
       if (isClaimable) {
         session.emit({
           agent: 'agent_3',
           type: 'AGENT_HANDOFF',
-          message: 'Claim is valid — handing off to Agent 4: The Financial Adjudicator',
+          message: 'Claim is valid - handing off to Agent 4: The Financial Adjudicator',
           payload: { to: 'agent_4' },
         });
 
-        // Load member profile for policy terms
         const memberProfile = await prisma.memberProfile.findUnique({
           where: { userId: input.userId },
         });
         const policy = resolvePolicy(memberProfile);
 
-        const billedAmount =
-          (serviceMap?.triangulation_data?.billing?.billed_amount as number | null) ?? 0;
+        const billedAmount = (serviceMap?.triangulation_data?.billing?.billed_amount as number | null) ?? 0;
         const billedCpts = serviceMap?.triangulation_data?.billing?.cpt_codes ?? [];
         const matchedCondition = validationReport?.matched_condition ?? null;
 
@@ -290,7 +321,7 @@ export const ocrService = {
         session.emit({
           agent: 'system',
           type: 'AGENT_THINKING',
-          message: `Skipping financial adjudication — claim is not claimable (${allRejectionReasons.length} issue(s) found)`,
+          message: `Skipping financial adjudication - claim is not claimable (${allRejectionReasons.length} issue(s) found)`,
         });
       }
 
@@ -303,7 +334,7 @@ export const ocrService = {
       if (isClaimable) {
         verdict = 'CLAIMABLE';
         verdictSummary =
-          'This claim is valid and ready for submission. All three agents verified the ICD-10 codes, CPT necessity, fraud patterns, and administrative integrity — no issues found.';
+          'This claim is valid and ready for submission. All three agents verified the ICD-10 codes, CPT necessity, fraud patterns, and administrative integrity - no issues found.';
       } else if (!validationPassed && gkPassed) {
         verdict = 'NOT_CLAIMABLE';
         verdictSummary = `Claim rejected by The Clinical Validator. ${allRejectionReasons.length} clinical issue(s) detected: ${allRejectionReasons.slice(0, 2).join('; ')}.`;
@@ -315,7 +346,61 @@ export const ocrService = {
         verdictSummary = `Claim rejected by multiple agents. ${allRejectionReasons.length} total issue(s): ${allRejectionReasons.slice(0, 2).join('; ')}.`;
       }
 
-      // ── Persist to DB first, then complete SSE ───────────────────────────────
+      const reconciliation = reconcileServiceMaps(prescriptionMap, billMap, labReportMap);
+      auditLogger.addPhase({
+        phase: 'cross_agent_consistency_audit',
+        agent: 'system',
+        status: reconciliation.mismatches.length > 0 ? 'warn' : 'ok',
+        input_snapshot: {
+          prescription: prescriptionMap,
+          bill: billMap,
+          lab_report: labReportMap,
+        },
+        output_snapshot: {
+          patient_id_identical: reconciliation.patientIdConsistent,
+          chronological_consistency: reconciliation.chronologyConsistent,
+          mismatches: reconciliation.mismatches,
+        },
+        field_audit: [],
+        issues: reconciliation.mismatches,
+      });
+
+      const completenessScores = [
+        buildServiceMapFieldAudit(prescriptionMap).dataCompletenessScore,
+        buildServiceMapFieldAudit(billMap).dataCompletenessScore,
+        buildServiceMapFieldAudit(labReportMap).dataCompletenessScore,
+      ];
+      const averageCompleteness = Number(
+        (completenessScores.reduce((sum, score) => sum + score, 0) / completenessScores.length).toFixed(2),
+      );
+      const summaryCriticalNulls = [
+        ...buildCriticalNullIssues(prescriptionMap),
+        ...buildCriticalNullIssues(billMap),
+        ...buildCriticalNullIssues(labReportMap),
+      ].map((issue) => issue.field || issue.message);
+      const falsePositiveRisks = auditLogger
+        .getSnapshot()
+        .phases
+        .flatMap((phase) =>
+          phase.issues
+            .filter((issue) => issue.code === 'HIGH_FALSE_POSITIVE_RISK')
+            .map((issue) => issue.message),
+        );
+      const crossAgentMismatchMessages = reconciliation.mismatches.map((issue) => `${issue.field}: ${issue.message}`);
+      const rootCauseHypothesis = allRejectionReasons.length > 0
+        ? `The most likely rejection driver was ${!validationReport?.passed ? 'agent_2' : 'agent_3'}, where "${allRejectionReasons[0]}" was recorded. Supporting audit evidence includes critical nulls [${summaryCriticalNulls.slice(0, 4).join(', ') || 'none'}] and mismatches [${crossAgentMismatchMessages.join(' | ') || 'none'}].`
+        : 'The audit shows no blocking evidence: agent_1 produced sufficiently complete ServiceMaps, agent_2 found no medical-necessity or fraud blockers, and agent_3 found no administrative or policy conflicts.';
+
+      auditLogger.setSummary({
+        overall_status:
+          verdict === 'CLAIMABLE' ? 'claimable' : reconciliation.mismatches.length > 0 ? 'audit_required' : 'non_claimable',
+        data_completeness_score: averageCompleteness,
+        critical_nulls: summaryCriticalNulls,
+        false_positive_risks: falsePositiveRisks,
+        cross_agent_mismatches: crossAgentMismatchMessages,
+        root_cause_hypothesis: rootCauseHypothesis,
+      });
+
       const eventLog = session.getLog();
 
       await prisma.claimSession.update({
@@ -325,7 +410,7 @@ export const ocrService = {
           extractedServiceMap: serviceMap as object,
           validationReport: validationReport as object,
           gatekeeperReport: gatekeeperReport as object,
-          adjudicationResult: adjudicationResult as object ?? undefined,
+          adjudicationResult: (adjudicationResult as object) ?? undefined,
           verdict,
           isClaimable,
           verdictReasons: allRejectionReasons,
@@ -334,22 +419,17 @@ export const ocrService = {
         },
       });
 
-      // If triggered from a formal claim, link the session and update adjudication
       if (input.claimId) {
         await prisma.claim.update({
           where: { id: input.claimId },
           data: {
             claimSessionId: claimSession.id,
-            adjudicationResult: adjudicationResult as object ?? undefined,
+            adjudicationResult: (adjudicationResult as object) ?? undefined,
             status: 'UNDER_REVIEW',
           },
         });
       }
 
-      // SSE payload MUST NOT contain eventLog — it creates a circular reference:
-      // PIPELINE_COMPLETE.payload.eventLog[n] would contain the PIPELINE_COMPLETE
-      // event itself, whose payload contains the eventLog again → infinite loop.
-      // The frontend already has every event from the live stream.
       const ssePayload: FinalPipelineResult = {
         sessionId: claimSession.id,
         verdict,
@@ -365,12 +445,19 @@ export const ocrService = {
 
       session.complete(ssePayload);
       return { ...ssePayload, eventLog };
-
     } catch (err) {
       const message = (err as Error).message;
       session.error(`Pipeline failed: ${message}`);
 
-      // Persist partial session
+      auditLogger.setSummary({
+        overall_status: 'audit_required',
+        data_completeness_score: 0,
+        critical_nulls: [],
+        false_positive_risks: [],
+        cross_agent_mismatches: [],
+        root_cause_hypothesis: `Pipeline execution stopped before completion because ${message}. Review the last successful phase entries for the closest causal evidence.`,
+      });
+
       await prisma.claimSession.update({
         where: { id: claimSession.id },
         data: {
@@ -387,7 +474,6 @@ export const ocrService = {
     }
   },
 
-  /** Legacy: run just the gatekeeper (kept for backward compat) */
   async runGatekeeper(input: {
     prescriptionVaultId: string;
     billVaultId: string;
@@ -405,9 +491,9 @@ export const ocrService = {
       throw err;
     }
 
-    const prescription = vaultItems.find((v) => v.id === input.prescriptionVaultId);
-    const bill = vaultItems.find((v) => v.id === input.billVaultId);
-    const labReport = vaultItems.find((v) => v.id === input.labReportVaultId);
+    const prescription = vaultItems.find((item) => item.id === input.prescriptionVaultId);
+    const bill = vaultItems.find((item) => item.id === input.billVaultId);
+    const labReport = vaultItems.find((item) => item.id === input.labReportVaultId);
 
     if (!prescription?.extractedData || !bill?.extractedData || !labReport?.extractedData) {
       const err = new Error('All documents must be OCR processed before running the gatekeeper');
