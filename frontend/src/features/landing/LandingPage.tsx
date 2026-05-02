@@ -10,6 +10,8 @@ import { FeatureGrid } from "./components/FeatureGrid";
 import { HeroSection } from "./components/HeroSection";
 import { HowItWorks } from "./components/HowItWorks";
 import { TrustBar } from "./components/TrustBar";
+import { ProductShowcase } from "./components/ProductShowcase";
+import { VideoDemo } from "./components/VideoDemo";
 
 type LandingPageProps = {
   language: UseLanguageResult;
@@ -31,19 +33,23 @@ export function LandingPage({ language, theme }: LandingPageProps) {
         theme={theme}
         user={user ? { email: user.email, role: user.role } : undefined}
       />
-      <main id="top" className="flex flex-col gap-16 md:gap-24 mb-24">
+      <main id="top" className="flex flex-col">
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
           <HeroSection content={content.hero} />
         </motion.div>
+        <VideoDemo />
+        <ProductShowcase />
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.1 }}>
           <TrustBar content={content.trust} />
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.2 }}>
           <FeatureGrid content={content.features} />
         </motion.div>
+        
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.3 }}>
           <HowItWorks content={content.process} />
         </motion.div>
+        
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.4 }}>
           <CtaSection content={content.cta} />
         </motion.div>

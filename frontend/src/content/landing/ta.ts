@@ -12,7 +12,7 @@ export const ta: LandingContent = {
       contact: "தொடர்பு",
       docs: "ஆவணங்கள்",
       github: "கிட்ஹப்",
-      demo: "டெமோ",
+      demo: "வீடியோ டெமோ",
     },
   },
   theme: {

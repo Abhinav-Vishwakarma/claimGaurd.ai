@@ -12,7 +12,7 @@ export const hi: LandingContent = {
       contact: "संपर्क",
       docs: "दस्तावेज़",
       github: "गिटहब",
-      demo: "डेमो",
+      demo: "वीडियो डेमो",
     },
   },
   theme: {

@@ -14,11 +14,24 @@
 [![Qdrant](https://img.shields.io/badge/Qdrant-Vector_DB-DC143C?style=flat-square)](https://qdrant.tech)
 [![License](https://img.shields.io/badge/License-ISC-blue?style=flat-square)](LICENSE)
 
+[![ClaimGuard.ai Project Demo](https://img.youtube.com/vi/NdUPj_UV0hw/0.jpg)](https://youtu.be/NdUPj_UV0hw)
+
+
 **ClaimGuard.ai** automates the end-to-end review of medical insurance claims using a multi-agent AI pipeline — extracting data from uploaded documents, validating clinical codes, detecting billing fraud, and calculating payment amounts — all in real time.
 
-[**Live Demo**](https://claimguard-ai.vercel.app) · [**Project Demo Video**](https://drive.google.com/file/d/1sV07g-pReb3Gwzoa8Oi0bnImebAGM8Nm/view?usp=sharing) · [**Documentation**](https://claim-gaurd-ai.vercel.app/docs/installations)
+[**Live Demo**](https://claimguard-ai.vercel.app) · [**Project Demo Video**](https://youtu.be/NdUPj_UV0hw) · [**Documentation**](https://claim-gaurd-ai.vercel.app/docs/installations)
 
 </div>
+
+---
+
+## 📸 Platform Showcase
+
+| ![Dashboard](frontend/public/ui/1.png) | ![AI Pipeline](frontend/public/ui/2.png) |
+|:---:|:---:|
+| **Insightful Dashboard** | **AI Agent Orchestration** |
+| ![Audit](frontend/public/ui/3.png) | ![Vault](frontend/public/ui/4.png) |
+| **Detailed Claim Audit** | **Smart Evidence Vault** |
 
 ---
 

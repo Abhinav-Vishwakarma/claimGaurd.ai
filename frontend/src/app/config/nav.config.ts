@@ -12,6 +12,6 @@ export const navItems: NavItem[] = [
   { id: "trust", href: "#trust", labelKey: "trust" },
   { id: "contact", href: "#contact", labelKey: "contact" },
   { id: "docs", href: "/docs", labelKey: "docs" },
-  { id: "github", href: "https://github.com/Abhinav-Vishwakarma/claimGaurd.ai", labelKey: "github" },
-  { id: "demo", href: "https://drive.google.com/drive/folders/1U4MPWTt2XwG_GVt-ged9X79N3NHw85C_?usp=sharing", labelKey: "demo" },
+  { id: "demo", href: "#video-demo", labelKey: "demo" },
+{ id: "github", href: "https://github.com/Abhinav-Vishwakarma/claimGaurd.ai", labelKey: "github" },
 ];

@@ -12,7 +12,7 @@ export const mr: LandingContent = {
       contact: "संपर्क",
       docs: "दस्तऐवज",
       github: "गिटहब",
-      demo: "डेमो",
+      demo: "व्हिडिओ डेमो",
     },
   },
   theme: {
