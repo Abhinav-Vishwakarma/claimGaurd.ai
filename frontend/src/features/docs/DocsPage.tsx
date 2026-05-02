@@ -13,6 +13,7 @@ type DocsPageProps = {
 
 const DOCS_LIST = [
   { id: "installations", title: "Installation & Setup" },
+  { id: "diagrams", title: "System Diagrams" },
   { id: "knowledge-base", title: "The Knowledge Base" },
   { id: "rules-schema", title: "Rules & Logic Schema" },
   { id: "vector-db", title: "Vector Database (Qdrant)" },
@@ -22,7 +23,7 @@ const DOCS_LIST = [
   { id: "testing", title: "Testing Suite" },
   { id: "api-docs", title: "API Documentation" },
   { id: "prompts", title: "Prompts Used" },
-  { id: "diagrams", title: "System Diagrams" },
+  
 ];
 
 export function DocsPage({ language, theme }: DocsPageProps) {

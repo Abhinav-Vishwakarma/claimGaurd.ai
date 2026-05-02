@@ -86,72 +86,266 @@ describe('IntegrityGatekeeper', () => {
 
 ## Frontend Testing (Vitest + React Testing Library)
 
-### Setup
+### Overview
 
-The frontend uses **Vitest** (Vite-native test runner) paired with **React Testing Library** for component testing.
+The frontend uses **Vitest** (Vite-native test runner) paired with **React Testing Library** for comprehensive UI component testing. The test suite includes **49 tests** covering authentication flows, UI components, navigation, and role-based dashboard routing.
 
-Install test dependencies:
+### Test Configuration
 
-```bash
-cd frontend
-npm install --save-dev vitest @testing-library/react @testing-library/jest-dom jsdom
-```
+**Configuration Files:**
+- **`vitest.config.ts`** - Vitest setup with jsdom environment
+- **`src/test/setup.ts`** - Global test setup with mocks for browser APIs
+- **`src/test/testUtils.ts`** - Reusable test utilities and mock factories
 
-**vite.config.ts** (test configuration):
+**vitest.config.ts**:
 
 ```typescript
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: 'jsdom',
     globals: true,
+    environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    css: true,
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
 });
 ```
+
+### Test Suite Overview
+
+**Total Tests:** 49 ✓
+
+| Test File | Count | Coverage |
+|-----------|-------|----------|
+| Button.test.tsx | 6 | UI rendering, variants, props |
+| FormField.test.tsx | 8 | Form input, password toggle, events |
+| LoginPage.test.tsx | 8 | Auth form, user input, visibility |
+| Navbar.test.tsx | 9 | Navigation, auth state, mobile menu |
+| DashboardDispatcher.test.tsx | 7 | Role-based routing, loading states |
+| RegisterPage.test.tsx | 11 | Registration form, role selection |
+
+### Detailed Tests by Category
+
+#### 1. Core UI Components (6 tests)
+**File:** `src/test/Button.test.tsx`
+
+- ✓ Renders children text correctly
+- ✓ Applies primary variant by default
+- ✓ Applies secondary variant styling
+- ✓ Accepts custom className
+- ✓ Passes through anchor props (href, target)
+- ✓ Renders as inline-flex element
+
+#### 2. Form Field Component (8 tests)
+**File:** `src/test/FormField.test.tsx`
+
+- ✓ Renders label text
+- ✓ Renders input with correct type
+- ✓ Passes through input attributes (placeholder, required)
+- ✓ Renders password toggle button for password inputs
+- ✓ Toggles password visibility on button click
+- ✓ Does not render toggle for non-password inputs
+- ✓ Updates aria-label on toggle
+- ✓ Handles onChange events
+
+#### 3. Authentication Pages (19 tests)
+**LoginPage Tests (8 tests):** `src/test/LoginPage.test.tsx`
+- ✓ Renders login form with title
+- ✓ Renders email and password input fields
+- ✓ Renders sign in button and go back button
+- ✓ Renders register link
+- ✓ Allows user to type in email/password fields
+- ✓ Toggles password visibility
+
+**RegisterPage Tests (11 tests):** `src/test/RegisterPage.test.tsx`
+- ✓ Renders register form with all required fields (name, email, password, role)
+- ✓ Renders role selection dropdown with Client/Hospital options
+- ✓ Sets default role to CLIENT
+- ✓ Renders create account button
+- ✓ Allows user to fill all form fields
+- ✓ Allows password visibility toggle
+- ✓ Enforces password minimum length requirement
+
+#### 4. Navigation Component (9 tests)
+**File:** `src/test/Navbar.test.tsx`
+
+- ✓ Renders logo
+- ✓ Renders navigation items
+- ✓ Renders login/register buttons when unauthenticated
+- ✓ Renders logout button when authenticated
+- ✓ Calls onLogout when logout button is clicked
+- ✓ Renders language selector and theme toggle
+- ✓ Renders mobile menu button
+- ✓ Toggles mobile menu on button click
+
+#### 5. Dashboard Routing (7 tests)
+**File:** `src/test/DashboardDispatcher.test.tsx`
+
+- ✓ Shows loading state while fetching user data
+- ✓ Redirects to login on authentication error
+- ✓ Renders CLIENT dashboard for CLIENT role
+- ✓ Renders HOSPITAL dashboard for HOSPITAL role
+- ✓ Renders ADMIN dashboard for ADMIN role
+- ✓ Handles unknown role gracefully
+- ✓ Returns null when user data is not available
 
 ### Running Tests
 
 ```bash
 cd frontend
 
-# Run all tests
-npx vitest run
+# Run all tests once (CI mode)
+npm test -- --run
 
-# Watch mode
-npx vitest
+# Watch mode (re-runs on file change)
+npm test
+
+# Run tests with Vitest UI dashboard
+npm run test:ui
+
+# Generate coverage report
+npm run test:coverage
+
+# Run specific test file
+npm test -- src/test/Button.test.tsx
 ```
 
-### What is Covered
+### Test Utilities
 
-| Area | What is Tested |
-|---|---|
-| **Component rendering** | Correct rendering of claim cards, status badges, pipeline views |
-| **Form validation** | Login form, claim submission form error states |
-| **Hook behavior** | `useTheme` toggle, `useLanguage` locale switching |
-| **API mocking** | apiService calls stubbed with `vi.mock` |
-
-### Example — Component Test
+**Available Helpers (`src/test/testUtils.ts`):**
 
 ```typescript
+// Mock content factory
+createMockContent(overrides?)
+
+// Mock theme factory
+createMockTheme(overrides?)
+
+// Mock language factory
+createMockLanguage(overrides?)
+
+// Mock user factory
+createMockUser(overrides?)
+
+// Custom render with providers
+renderWithProviders(ui, options?)
+```
+
+**Example Usage:**
+
+```typescript
+import { createMockContent, createMockTheme } from '../test/testUtils';
+
+const mockContent = createMockContent({
+  nav: { items: { home: 'Home' } }
+});
+
+const mockTheme = createMockTheme({ isDark: true });
+```
+
+### Best Practices
+
+#### 1. User Interactions
+```typescript
+import userEvent from '@testing-library/user-event';
+
+it('test', async () => {
+  const user = userEvent.setup();
+  await user.type(input, 'text');
+  await user.click(button);
+});
+```
+
+#### 2. Element Querying
+- Prefer `getByRole()` for accessibility
+- Use `getByLabelText()` for form fields
+- Use `getByTestId()` only when necessary
+
+#### 3. Example Test
+```typescript
 import { render, screen } from '@testing-library/react';
-import { ClaimStatusBadge } from '../components/ui/ClaimStatusBadge';
+import userEvent from '@testing-library/user-event';
+import { LoginPage } from '../features/auth/LoginPage';
 
-describe('ClaimStatusBadge', () => {
-  it('renders APPROVED status with correct label', () => {
-    render(<ClaimStatusBadge status="APPROVED" />);
-    expect(screen.getByText('Approved')).toBeInTheDocument();
-  });
-
-  it('renders PENDING status with correct label', () => {
-    render(<ClaimStatusBadge status="PENDING" />);
-    expect(screen.getByText('Pending')).toBeInTheDocument();
+describe('LoginPage', () => {
+  it('should allow user to type in email field', async () => {
+    const user = userEvent.setup();
+    render(<LoginPage {...props} />);
+    
+    const emailInput = screen.getByLabelText('Email');
+    await user.type(emailInput, 'test@example.com');
+    
+    expect(emailInput).toHaveValue('test@example.com');
   });
 });
 ```
+
+### Mocking Strategy
+
+**Global Mocks (setup.ts):**
+- `window.matchMedia` - For theme/responsive queries
+- `IntersectionObserver` - For lazy loading
+
+**Test File Mocks:**
+Each test file mocks its dependencies:
+- Auth hooks (`useLogin`, `useRegister`, `useMe`)
+- Navigation (`navigate` function)
+- Child components
+- Config files
+
+**Example Mock:**
+```typescript
+vi.mock('../features/auth/auth.hooks', () => ({
+  useLogin: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    error: null,
+  }),
+}));
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "Cannot read properties of undefined" | Ensure `userEvent.setup()` is called in async tests |
+| "Found multiple elements with..." | Use `getByRole()` with specific options like `{ name: /Login/i }` |
+| Tests timing out | Increase timeout: `it('test', async () => {}, { timeout: 10000 })` |
+| Component not rendering | Check mocked child components and hooks |
+
+### Code Coverage
+
+Target coverage goals:
+- **Statements:** >80%
+- **Branches:** >75%
+- **Functions:** >80%
+- **Lines:** >80%
+
+Run coverage:
+```bash
+npm run test:coverage
+```
+
+### Next Steps
+
+**Phase 2: Integration Tests** (Recommended)
+- Test API integration with mock backends
+- Test complex user flows (login → create claim → submit)
+- Test error handling and edge cases
+
+**Phase 3: E2E Tests** (Future)
+- Use Playwright or Cypress
+- Test real browser interactions
+- Test complete user workflows end-to-end
 
 ---
 

@@ -152,4 +152,4 @@ Uploaded Documents
 
 ## Product Architecture
 
-*To be added later.*
+![Alt text](../diagrams/sd.jpg)
