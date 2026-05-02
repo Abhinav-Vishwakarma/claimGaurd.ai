@@ -8,6 +8,47 @@ import {
   evaluateFalsePositiveRisk,
 } from '../utils/pipeline-audit';
 
+/**
+ * Returns true if the billed CPTs span 3 or more distinct clinical categories.
+ * When this is true alongside context starvation, unbundling flags are likely false positives.
+ *
+ * Category ranges:
+ *  E&M:      99xxx
+ *  Imaging:  7xxxx (70000-79999)
+ *  Lab:      8xxxx (80000-89999)
+ *  Therapy:  9xxxx excluding 99xxx (90000-98999)
+ *  Surgery:  1xxxx-6xxxx
+ */
+function getCptCategory(cpt: string): string {
+  const num = parseInt(cpt.replace(/\D/g, ''), 10);
+  if (isNaN(num)) return 'other';
+  if (num >= 99201 && num <= 99499) return 'evaluation_management';
+  if (num >= 70000 && num <= 79999) return 'imaging';
+  if (num >= 80000 && num <= 89999) return 'lab_pathology';
+  if (num >= 90000 && num <= 99200) return 'therapy_medicine';
+  if (num >= 10000 && num <= 69999) return 'surgery_procedure';
+  return 'other';
+}
+
+function spansMultipleCptCategories(cpts: string[], threshold = 3): boolean {
+  const categories = new Set(cpts.map(getCptCategory));
+  categories.delete('other');
+  return categories.size >= threshold;
+}
+
+const buildCptDescriptionMap = () => {
+  const rules = loadRules();
+  const cptDescriptionMap: Record<string, string> = {};
+
+  for (const condition of rules.conditions) {
+    for (const cpt of condition.allowed_cpt_codes) {
+      cptDescriptionMap[cpt.code] = cpt.description;
+    }
+  }
+
+  return cptDescriptionMap;
+};
+
 const buildFraudPrompt = (
   conditionName: string,
   reasoningTraps: string[],
@@ -15,50 +56,77 @@ const buildFraudPrompt = (
   billedAmount: number | null,
   orderedService: string | null,
   reason: string | null,
-) => `You are an expert medical billing fraud investigator. Analyze the following claim for fraud patterns.
+  cptDescriptionMap: Record<string, string>,
+) => {
+  const cptBreakdown = billedCpts
+    .map((cpt) => {
+      const description = cptDescriptionMap[cpt] ?? 'Unknown service';
+      const category = getCptCategory(cpt);
+      return `  - ${cpt}: ${description} [Category: ${category}]`;
+    })
+    .join('\n');
+
+  const categoryAnalysis = [...new Set(billedCpts.map(getCptCategory))]
+    .map((cat) => `- ${cat}: ${billedCpts.filter((cpt) => getCptCategory(cpt) === cat).join(', ')}`)
+    .join('\n');
+
+  return `You are an expert medical billing fraud investigator. Analyze the following claim for fraud patterns.
 
 CONDITION: ${conditionName}
-ORDERED SERVICE (from prescription): ${orderedService || 'Unknown'}
-CLINICAL REASON: ${reason || 'Unknown'}
-BILLED CPT CODES: ${billedCpts.join(', ')}
+ORDERED SERVICE (from prescription): ${orderedService || 'Not provided - extraction may be incomplete'}
+CLINICAL REASON: ${reason || 'Not provided - extraction may be incomplete'}
+
+BILLED CPT CODES WITH DESCRIPTIONS:
+${cptBreakdown}
+
 TOTAL BILLED AMOUNT: ${billedAmount != null ? `$${billedAmount}` : 'Unknown'}
 KNOWN FRAUD PATTERNS FOR THIS CONDITION: ${reasoningTraps.join('; ')}
 
-EXPLICIT UNBUNDLING RULES:
-Do NOT flag unbundling if:
-- CPT codes belong to different categories (e.g., evaluation, lab, imaging, therapy).
-- No single comprehensive CPT exists that replaces them.
-- Services are independently performed and medically necessary based on the condition.
+CPT CATEGORY ANALYSIS:
+${categoryAnalysis}
 
-SELF-QUESTIONING LOGIC:
-Before formulating your final response, internally ask yourself:
-1. Is ICD billable and specific?
-2. Are all CPT codes allowed for this condition?
-3. Do CPT codes match prescription + lab reports?
-4. Are CPT codes independent or part of a bundle?
-5. Is visit level justified?
-6. Are tests medically necessary?
-7. Is cost reasonable vs context?
-8. Any mismatch or anomaly?
+EXPLICIT UNBUNDLING RULES - READ CAREFULLY:
+Do NOT flag unbundling if ALL of the following are true:
+1. The CPT codes belong to DIFFERENT clinical categories (E&M, imaging, lab, therapy).
+2. No single comprehensive CPT code exists that replaces all of them combined.
+3. Each service can be independently performed and billed on the same date.
+4. The combination is clinically logical for the diagnosis.
+
+ONLY flag unbundling if CPT codes within the SAME category are split when a bundled
+code exists that would cover them all (e.g., billing 71045 + 71046 separately when
+one code covers both views).
+
+If ORDERED SERVICE or CLINICAL REASON is "Not provided", you MUST note this
+data limitation in your reasoning and reduce your confidence in any fraud flag.
+Do NOT flag fraud solely because context is missing.
+
+SELF-QUESTIONING - answer each internally before responding:
+1. Do these CPT codes span multiple clinical categories? (If yes, unbundling is unlikely)
+2. Is there a single CPT that replaces ALL of these combined? (If no, unbundling is invalid)
+3. Is the ordered service missing or incomplete? (If yes, lower your fraud confidence)
+4. Is the visit level (E&M code) appropriate for the diagnosis complexity?
+5. Are the lab/imaging tests logically connected to the diagnosis?
+6. Is the total cost reasonable for this combination of services?
 
 STRICT RULES:
 1. Return ONLY a raw JSON object - NO markdown, NO code fences, NO explanation.
-2. Analyze specifically for UPCODING and UNBUNDLING based on your self-questioning analysis.
+2. If context is missing (Unknown ordered service/reason), set severity to LOW maximum.
 
 Return exactly this JSON:
 {
   "upcoding": {
     "type": "UPCODING or NONE",
-    "description": "<one sentence explanation or 'No upcoding detected'>",
+    "description": "<one sentence or 'No upcoding detected'>",
     "severity": "HIGH or MEDIUM or LOW or NONE"
   },
   "unbundling": {
     "type": "UNBUNDLING or NONE",
-    "description": "<one sentence explanation or 'No unbundling detected'>",
+    "description": "<one sentence or 'No unbundling detected'>",
     "severity": "HIGH or MEDIUM or LOW or NONE"
   },
-  "ai_reasoning": "<Provide a step-by-step summary of your self-questioning deductions before concluding>"
+  "ai_reasoning": "<step-by-step summary referencing CPT categories and clinical logic>"
 }`;
+};
 
 const parseFraudResult = (text: string): { upcoding: FraudFlag; unbundling: FraudFlag; ai_reasoning: string } => {
   try {
@@ -125,6 +193,7 @@ export const clinicalValidator = {
     const prescriptionReason = prescription.triangulation_data.prescription.reason;
     const orderedService = prescription.triangulation_data.prescription.ordered_service;
     const billedAmount = bill.triangulation_data.billing.billed_amount;
+    const cptDescriptionMap = buildCptDescriptionMap();
 
     session.emit({
       agent: 'agent_2',
@@ -132,7 +201,22 @@ export const clinicalValidator = {
       message: 'Phase 1: Building semantic query for ICD-10 specificity check...',
     });
 
-    const semanticQuery = [prescriptionReason, orderedService, ...billedCpts].filter(Boolean).join(' ');
+    const billedCptDescriptions = billedCpts
+      .map((cpt) => cptDescriptionMap[cpt] ?? cpt)
+      .join(', ');
+
+    const semanticQuery = [
+      prescriptionReason,
+      orderedService,
+      billedCptDescriptions,
+      ...billedCpts,
+    ].filter(Boolean).join(' ');
+
+    session.emit({
+      agent: 'agent_2',
+      type: 'AGENT_THINKING',
+      message: `Semantic query built: "${semanticQuery.slice(0, 120)}..."`,
+    });
 
     session.emit({
       agent: 'agent_2',
@@ -169,6 +253,15 @@ export const clinicalValidator = {
           message: `Matched: "${matchedCondition}" (confidence: ${(qdrantConfidence * 100).toFixed(1)}%)`,
           payload: { matchedCondition, qdrantConfidence, allowedCpts, nonBillableIcd10 },
         });
+
+        const CONFIDENCE_THRESHOLD = 0.78;
+        if (qdrantConfidence < CONFIDENCE_THRESHOLD) {
+          session.emit({
+            agent: 'agent_2',
+            type: 'AGENT_THINKING',
+            message: `Low Qdrant confidence (${(qdrantConfidence * 100).toFixed(1)}%) - below threshold of ${CONFIDENCE_THRESHOLD * 100}%. Condition match is uncertain. Will proceed but flagging for review.`,
+          });
+        }
 
         const prescriptionText = `${prescriptionReason ?? ''} ${orderedService ?? ''}`.toLowerCase();
         nonBillableHit = nonBillableIcd10.some(
@@ -333,6 +426,7 @@ export const clinicalValidator = {
         billedAmount,
         orderedService,
         prescriptionReason,
+        cptDescriptionMap,
       );
       const starvationIssues = [];
 
@@ -413,11 +507,26 @@ export const clinicalValidator = {
           payload: fraudDetection,
         });
 
+        const contextStarved = !orderedService && !prescriptionReason;
+        const multiCategoryBilling = spansMultipleCptCategories(billedCpts);
+
         if (fraudDetection.upcoding.type !== 'NONE' && fraudDetection.upcoding.severity !== 'LOW') {
-          rejectionReasons.push(`Upcoding detected (${fraudDetection.upcoding.severity}): ${fraudDetection.upcoding.description}`);
+          rejectionReasons.push(
+            `Upcoding detected (${fraudDetection.upcoding.severity}): ${fraudDetection.upcoding.description}`,
+          );
         }
         if (fraudDetection.unbundling.type !== 'NONE' && fraudDetection.unbundling.severity !== 'LOW') {
-          rejectionReasons.push(`Unbundling detected (${fraudDetection.unbundling.severity}): ${fraudDetection.unbundling.description}`);
+          if (contextStarved && multiCategoryBilling) {
+            session.emit({
+              agent: 'agent_2',
+              type: 'AGENT_THINKING',
+              message: `Unbundling flag suppressed - CONTEXT_STARVATION detected with multi-category CPT spread (${[...new Set(billedCpts.map(getCptCategory))].join(', ')}). This is a known false positive pattern. Fix extraction to resolve permanently.`,
+            });
+          } else {
+            rejectionReasons.push(
+              `Unbundling detected (${fraudDetection.unbundling.severity}): ${fraudDetection.unbundling.description}`,
+            );
+          }
         }
       } catch (err) {
         session.emit({

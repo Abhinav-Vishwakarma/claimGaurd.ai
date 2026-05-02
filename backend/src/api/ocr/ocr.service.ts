@@ -278,6 +278,7 @@ export const ocrService = {
           labReport: labReportMap,
         },
         auditLogger,
+        session,
       );
 
       const gk = gatekeeperReport as { is_clean_claim: boolean; rejection_reasons: string[] };
@@ -309,8 +310,8 @@ export const ocrService = {
         });
         const policy = resolvePolicy(memberProfile);
 
-        const billedAmount = (serviceMap?.triangulation_data?.billing?.billed_amount as number | null) ?? 0;
-        const billedCpts = serviceMap?.triangulation_data?.billing?.cpt_codes ?? [];
+        const billedAmount = (billMap.triangulation_data.billing.billed_amount as number | null) ?? 0;
+        const billedCpts = billMap.triangulation_data.billing.cpt_codes ?? [];
         const matchedCondition = validationReport?.matched_condition ?? null;
 
         adjudicationResult = await financialAdjudicator.run(

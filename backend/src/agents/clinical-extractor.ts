@@ -45,11 +45,81 @@ const RULES = `STRICT RULES:
 4. cpt_codes must be an array of strings (can be empty []).
 5. risk_factors and comorbidities must be arrays of strings (can be empty []).`;
 
+const PRESCRIPTION_SCHEMA_OVERRIDE = `{
+  "metadata": {
+    "patient_id": "<string or null>",
+    "date_of_service": "<YYYY-MM-DD or null>",
+    "provider_npi": "<string or null>",
+    "claim_type": "<PPO|HMO|Medicare|Medicaid|etc or null>"
+  },
+  "triangulation_data": {
+    "prescription": {
+      "ordered_service": "<concatenate ALL procedure/test descriptions from the procedures table as a comma-separated string>",
+      "reason": "<concatenate ALL reason/indication/clinical reason values from the procedures table as a comma-separated string>",
+      "ordered_cpts": ["<array of all CPT code strings from the procedures table>"],
+      "signature_verified": "<true|false|null>"
+    },
+    "lab_report": {
+      "performed_service": "<e.g. CPT 71045 or null>",
+      "findings_summary": "<e.g. No signs of consolidation or null>",
+      "vitals": "<object like { BP: '120/80' } or null>"
+    },
+    "billing": {
+      "cpt_codes": ["<array of CPT code strings>"],
+      "billed_amount": "<number or null>"
+    }
+  },
+  "predictive_signals": {
+    "risk_factors": ["<array of risk factor strings>"],
+    "comorbidities": ["<array of comorbidity strings>"],
+    "next_recommended_visit": "<e.g. 90 days or null>"
+  }
+}`;
+
+const PRESCRIPTION_EXTRACTION_RULES = `CRITICAL EXTRACTION RULES FOR PRESCRIPTION DOCUMENTS:
+
+1. Locate the procedures or tests ordered table in the document.
+2. For "ordered_service": concatenate every value in the Description or Service column
+   into one comma-separated string. Example: "Chest X-ray (Single View), Rapid Influenza Test,
+   COVID-19 + Influenza Combo, Nebulization Therapy, OPD Consultation (New Pt)"
+3. For "reason": concatenate every value in the Reason or Indication or Clinical Reason
+   column into one comma-separated string. Example: "Rule out pneumonia, Viral etiology check,
+   Differential diagnosis, Bronchodilation / breathing support, Initial evaluation & management"
+4. For "ordered_cpts": extract every CPT code from the CPT Code column as an array of strings.
+5. NEVER return null for ordered_service or reason if a procedures table exists in the document.
+6. For "billed_amount" in billing section: prescriptions do not have billing amounts,
+   set this to null intentionally - this is correct behavior.
+7. For "signature_verified": set to true if a physician signature, name, or license number
+   appears at the bottom of the document.`;
+
+const normalizePatientId = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase();
+  return normalized || null;
+};
+
+const normalizeServiceMap = (serviceMap: ServiceMap): ServiceMap => {
+  if (serviceMap.metadata.patient_id) {
+    serviceMap.metadata.patient_id = normalizePatientId(serviceMap.metadata.patient_id);
+  }
+
+  if (!Array.isArray(serviceMap.triangulation_data.prescription.ordered_cpts)) {
+    serviceMap.triangulation_data.prescription.ordered_cpts = [];
+  }
+
+  return serviceMap;
+};
+
 const buildTextExtractionPrompt = (
   docType: string,
   extractedText: string,
   filename: string,
-): string => `You are a medical claim document intelligence engine.
+): string => {
+  const isPrescription = docType === 'prescription';
+  const schema = isPrescription ? PRESCRIPTION_SCHEMA_OVERRIDE : BASE_SCHEMA;
+  const additionalRules = isPrescription ? `\n\n${PRESCRIPTION_EXTRACTION_RULES}` : '';
+
+  return `You are a medical claim document intelligence engine.
 
 Document type: ${docType}
 Source file: ${filename}
@@ -61,9 +131,11 @@ ${extractedText.slice(0, 12000)}${extractedText.length > 12000 ? '\n[... truncat
 --- END DOCUMENT TEXT ---
 
 ${RULES}
+${additionalRules}
 
 Return exactly this JSON schema:
-${BASE_SCHEMA}`;
+${schema}`;
+};
 
 const buildVisionPrompt = (docType: string): string =>
   `You are a medical claim document intelligence engine.
@@ -247,7 +319,7 @@ export const clinicalExtractor = {
           },
         });
 
-        const serviceMap = parseServiceMap(result.text);
+        const serviceMap = normalizeServiceMap(parseServiceMap(result.text));
         auditExtractionResult({
           auditLogger,
           docType,
@@ -292,7 +364,7 @@ export const clinicalExtractor = {
           },
         });
 
-        const fallbackMap = parseServiceMap(geminiTextResult.text);
+        const fallbackMap = normalizeServiceMap(parseServiceMap(geminiTextResult.text));
         auditExtractionResult({
           auditLogger,
           docType,
@@ -366,7 +438,7 @@ export const clinicalExtractor = {
         },
       });
 
-      const serviceMap = parseServiceMap(result.text);
+      const serviceMap = normalizeServiceMap(parseServiceMap(result.text));
       auditExtractionResult({
         auditLogger,
         docType: docType as ExtractionInput['docType'],
@@ -400,7 +472,7 @@ export const clinicalExtractor = {
         },
       });
 
-      const fallbackMap = parseServiceMap(fallback.text);
+      const fallbackMap = normalizeServiceMap(parseServiceMap(fallback.text));
       auditExtractionResult({
         auditLogger,
         docType: docType as ExtractionInput['docType'],

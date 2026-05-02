@@ -1,5 +1,6 @@
 import type { ServiceMap } from '../api/ocr/ocr.types';
 import prisma from '../config/prisma';
+import type { AgentSession } from '../utils/agent-session';
 import type { PipelineAuditLogger } from '../utils/pipeline-audit';
 
 export type GatekeeperCheck = {
@@ -29,7 +30,11 @@ export type GatekeeperInput = {
 };
 
 export const integrityGatekeeper = {
-  async run(input: GatekeeperInput, auditLogger?: PipelineAuditLogger): Promise<GatekeeperReport> {
+  async run(
+    input: GatekeeperInput,
+    auditLogger?: PipelineAuditLogger,
+    session?: AgentSession,
+  ): Promise<GatekeeperReport> {
     const { prescription, bill, labReport } = input;
     const rejectionReasons: string[] = [];
 
@@ -96,18 +101,31 @@ export const integrityGatekeeper = {
 
     const policyCheck: GatekeeperCheck = { passed: true };
     const patientId = prescription.metadata.patient_id;
+    const normalizedId = patientId?.trim().toUpperCase() ?? '';
     const policyQuery = {
       model: 'memberProfile',
-      action: 'findUnique',
-      args: { where: { memberId: patientId } },
+      action: 'findFirst',
+      args: {
+        where: {
+          memberId: {
+            equals: normalizedId,
+            mode: 'insensitive',
+          },
+        },
+      },
     };
 
-    let profile: Awaited<ReturnType<typeof prisma.memberProfile.findUnique>> | null = null;
+    let profile: Awaited<ReturnType<typeof prisma.memberProfile.findFirst>> | null = null;
     let similarMemberIds: string[] = [];
 
     if (patientId) {
-      profile = await prisma.memberProfile.findUnique({
-        where: { memberId: patientId },
+      profile = await prisma.memberProfile.findFirst({
+        where: {
+          memberId: {
+            equals: normalizedId,
+            mode: 'insensitive',
+          },
+        },
       });
 
       if (!profile) {
@@ -178,47 +196,69 @@ export const integrityGatekeeper = {
       reason: '',
     };
 
-    const orderedService = prescription.triangulation_data.prescription.ordered_service ?? '';
-    const orderedServiceLower = orderedService.toLowerCase();
-    const performedService = labReport.triangulation_data.lab_report.performed_service ?? '';
-    const performedServiceLower = performedService.toLowerCase();
-    const billedCpts = bill.triangulation_data.billing.cpt_codes || [];
+    const prescriptionOrderedCpts = new Set(
+      prescription.triangulation_data.prescription.ordered_cpts
+      || prescription.triangulation_data.billing.cpt_codes
+      || [],
+    );
+    const labPerformedCpts = new Set(
+      labReport.triangulation_data.billing.cpt_codes || [],
+    );
+    const allJustifiedCpts = new Set([...prescriptionOrderedCpts, ...labPerformedCpts]);
+    const billedCptList = bill.triangulation_data.billing.cpt_codes || [];
+    const unjustifiedCpts = billedCptList.filter((cpt) => !allJustifiedCpts.has(cpt));
+    const hasSourceData = prescriptionOrderedCpts.size > 0 || labPerformedCpts.size > 0;
 
-    billedCpts.forEach((cpt) => {
-      if (!orderedServiceLower.includes(cpt.toLowerCase()) && !orderedServiceLower.includes('service')) {
-        triangulationCheck.cpt_mismatches.push(cpt);
-      }
-    });
-
-    if (!performedServiceLower) {
+    if (!hasSourceData) {
+      triangulationCheck.passed = true;
+      triangulationCheck.reason =
+        'Triangulation skipped - no CPT data found in prescription or lab report to compare against';
+      session?.emit({
+        agent: 'agent_3',
+        type: 'AGENT_THINKING',
+        message: 'Triangulation inconclusive - prescription and lab CPT lists are empty. Cannot validate billing.',
+      });
+    } else if (unjustifiedCpts.length > 0) {
       triangulationCheck.passed = false;
+      triangulationCheck.cpt_mismatches = unjustifiedCpts;
+      triangulationCheck.reason =
+        `${unjustifiedCpts.length} billed CPT(s) not found in prescription orders or lab report: [${unjustifiedCpts.join(', ')}]`;
+      rejectionReasons.push(triangulationCheck.reason);
+    } else {
+      triangulationCheck.passed = true;
+      triangulationCheck.reason =
+        `All ${billedCptList.length} billed CPT(s) verified against prescription and lab records`;
+    }
+
+    const orderedService = prescription.triangulation_data.prescription.ordered_service ?? '';
+    const performedService = labReport.triangulation_data.lab_report.performed_service;
+
+    if (!performedService) {
       triangulationCheck.missing_lab_report = true;
-      triangulationCheck.reason = 'No performed service found in lab report';
+      session?.emit({
+        agent: 'agent_3',
+        type: 'AGENT_THINKING',
+        message: 'performed_service is null in lab report - lab report may be incomplete',
+      });
     }
-
-    if (triangulationCheck.cpt_mismatches.length > 0 && triangulationCheck.passed) {
-      triangulationCheck.reason = `Billed CPTs not obvious in ordered service: ${triangulationCheck.cpt_mismatches.join(', ')}`;
-    }
-
-    if (!triangulationCheck.passed) rejectionReasons.push(triangulationCheck.reason);
 
     auditLogger?.addPhase({
       phase: 'agent_3_triangulation_check',
       agent: 'agent_3',
-      status: !triangulationCheck.passed || triangulationCheck.cpt_mismatches.length > 0 ? 'warn' : 'ok',
+      status: !triangulationCheck.passed || triangulationCheck.cpt_mismatches.length > 0 || triangulationCheck.missing_lab_report
+        ? 'warn'
+        : 'ok',
       input_snapshot: {
         orderedService,
         performedService,
-        billedCpts,
+        billedCpts: billedCptList,
       },
       output_snapshot: {
         orderedService,
         performedService,
-        billedCptComparison: billedCpts.map((cpt) => ({
+        billedCptComparison: billedCptList.map((cpt) => ({
           billed_cpt: cpt,
-          ordered_service: orderedService,
-          performed_service: performedService,
-          matched_in_ordered_service: orderedServiceLower.includes(cpt.toLowerCase()) || orderedServiceLower.includes('service'),
+          matched_in_prescription_or_lab: allJustifiedCpts.has(cpt),
         })),
         result: triangulationCheck,
       },
@@ -227,8 +267,11 @@ export const integrityGatekeeper = {
         ...triangulationCheck.cpt_mismatches.map((cpt) => ({
           code: 'TRIANGULATION_MISMATCH',
           field: 'triangulation_data.billing.cpt_codes',
-          message: `Billed CPT ${cpt} does not visually align with ordered service`,
+          message: `Billed CPT ${cpt} is not justified by the prescription or lab report CPT sets`,
         })),
+        ...(triangulationCheck.missing_lab_report
+          ? [{ code: 'MISSING_LAB_PERFORMED_SERVICE', message: 'performed_service is null in the lab report' }]
+          : []),
         ...(!triangulationCheck.passed
           ? [{ code: 'TRIANGULATION_FAILED', message: triangulationCheck.reason }]
           : []),

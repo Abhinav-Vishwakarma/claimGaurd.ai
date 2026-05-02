@@ -51,26 +51,23 @@ const createStableUuid = (value: string) => {
   ].join('-');
 };
 
-const formatCurrency = (value?: number) => (typeof value === 'number' ? `$${value.toFixed(2)}` : 'not specified');
+function buildConditionDocument(condition: ClaimCondition): string {
+  const cptDescriptions = condition.allowed_cpt_codes
+    .map((cpt) => `${cpt.code} ${cpt.description}`)
+    .join(', ');
 
-const conditionToPageContent = (condition: ClaimCondition) => {
-  const cptLines = condition.allowed_cpt_codes
-    .map((cpt) => {
-      const amount = cpt.allowable_amount ? `, allowable amount ${formatCurrency(cpt.allowable_amount)}` : '';
-      return `${cpt.code}: ${cpt.description}${amount}`;
-    })
-    .join('\n');
-
-  return [
-    `Condition: ${condition.name}`,
-    `Billable ICD-10 codes: ${condition.icd10.billable.join(', ')}`,
-    `Non-billable ICD-10 codes: ${condition.icd10.non_billable.join(', ')}`,
-    `Allowed CPT codes:\n${cptLines}`,
-    `Patient financials: copay ${formatCurrency(condition.financials.copay)}, coinsurance ${condition.financials.coinsurance_percent}`,
-    `Reasoning traps: ${condition.reasoning_traps.join('; ')}`,
-    `Full structured condition: ${JSON.stringify(condition)}`,
-  ].join('\n');
-};
+  return `
+    Condition Name: ${condition.name}
+    Billable ICD-10: ${condition.icd10.billable.join(', ')}
+    Non-Billable ICD-10: ${condition.icd10.non_billable.join(', ')}
+    Allowed Procedures and Tests: ${cptDescriptions}
+    Known Fraud Patterns: ${condition.reasoning_traps.join('. ')}
+    Clinical Category: outpatient diagnostic workup
+    Patient Copay: ${condition.financials?.copay ?? 'unknown'}
+    Coinsurance: ${condition.financials?.coinsurance_percent ?? 'unknown'}
+    Structured Condition JSON: ${JSON.stringify(condition)}
+  `.trim();
+}
 
 export const loadRules = (): RulesFile => {
   const rawRules = fs.readFileSync(rulesPath, 'utf-8');
@@ -94,7 +91,7 @@ export const buildRuleDocuments = () => {
 
     return new Document({
       id,
-      pageContent: conditionToPageContent(condition),
+      pageContent: buildConditionDocument(condition),
       metadata,
     });
   });
