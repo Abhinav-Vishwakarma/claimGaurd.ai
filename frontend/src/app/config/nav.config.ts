@@ -13,5 +13,5 @@ export const navItems: NavItem[] = [
   { id: "contact", href: "#contact", labelKey: "contact" },
   { id: "docs", href: "/docs", labelKey: "docs" },
   { id: "github", href: "https://github.com/Abhinav-Vishwakarma/claimGaurd.ai", labelKey: "github" },
-  { id: "demo", href: "#demo", labelKey: "demo" },
+  { id: "demo", href: "https://drive.google.com/drive/folders/1U4MPWTt2XwG_GVt-ged9X79N3NHw85C_?usp=sharing", labelKey: "demo" },
 ];
