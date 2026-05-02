@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { motion } from "framer-motion";
+import { ArrowLeft } from "lucide-react";
 import type { LandingContent } from "../../content/landing";
 import type { UseThemeResult } from "../../hooks/useTheme";
 import { navigate } from "../../hooks/usePath";
@@ -29,7 +31,21 @@ export function RegisterPage({ content, theme }: RegisterPageProps) {
 
   return (
     <AuthShell content={content} theme={theme}>
-      <AuthCard
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ duration: 0.4 }}
+        className="w-full"
+      >
+        <button 
+          onClick={() => navigate("/")} 
+          className="mb-6 flex items-center gap-2 text-sm text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+          type="button"
+        >
+          <ArrowLeft size={16} />
+          Go back home
+        </button>
+        <AuthCard
         description="Create a secure role-based account for claims collaboration."
         isSubmitting={register.isPending}
         onSubmit={submit}
@@ -63,7 +79,7 @@ export function RegisterPage({ content, theme }: RegisterPageProps) {
         <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
           Role
           <select
-            className="min-h-11 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-primary)]"
+            className="min-h-11 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-primary)] bg-opacity-50 backdrop-blur-md"
             onChange={(event) => setForm({ ...form, role: event.target.value as Role })}
             value={form.role}
           >
@@ -80,7 +96,8 @@ export function RegisterPage({ content, theme }: RegisterPageProps) {
         <button className="font-bold text-[var(--color-primary)]" onClick={() => navigate("/login")} type="button">
           Sign in
         </button>
-      </p>
+        </p>
+      </motion.div>
     </AuthShell>
   );
 }

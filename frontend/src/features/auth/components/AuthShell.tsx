@@ -14,7 +14,7 @@ type AuthShellProps = PropsWithChildren<{
 export function AuthShell({ children, content, theme }: AuthShellProps) {
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-header)] text-white">
+      <header className="border-b border-[var(--color-border)] bg-[var(--color-header)]/80 backdrop-blur-md text-white sticky top-0 z-50">
         <Container>
           <div className="flex min-h-16 items-center justify-between">
             <button className="flex items-center gap-2 text-lg font-bold" onClick={() => navigate("/")} type="button">

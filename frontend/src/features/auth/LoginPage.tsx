@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { motion } from "framer-motion";
+import { ArrowLeft } from "lucide-react";
 import type { LandingContent } from "../../content/landing";
 import type { UseThemeResult } from "../../hooks/useTheme";
 import { navigate } from "../../hooks/usePath";
@@ -23,7 +25,21 @@ export function LoginPage({ content, theme }: LoginPageProps) {
 
   return (
     <AuthShell content={content} theme={theme}>
-      <AuthCard
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ duration: 0.4 }}
+        className="w-full"
+      >
+        <button 
+          onClick={() => navigate("/")} 
+          className="mb-6 flex items-center gap-2 text-sm text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
+          type="button"
+        >
+          <ArrowLeft size={16} />
+          Go back home
+        </button>
+        <AuthCard
         description="Access your claim review workspace with your registered account."
         isSubmitting={login.isPending}
         onSubmit={submit}
@@ -53,7 +69,8 @@ export function LoginPage({ content, theme }: LoginPageProps) {
         <button className="font-bold text-[var(--color-primary)]" onClick={() => navigate("/register")} type="button">
           Create an account
         </button>
-      </p>
+        </p>
+      </motion.div>
     </AuthShell>
   );
 }

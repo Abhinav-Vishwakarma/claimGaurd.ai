@@ -3,11 +3,11 @@
 :root {
   color-scheme: light;
   --color-bg: #f7f9fc;
-  --color-surface: #ffffff;
+  --color-surface: rgba(255, 255, 255, 0.7);
   --color-soft: #eef2f7;
   --color-text: #0b1f3a;
   --color-muted: #5b6b82;
-  --color-border: #d8e0ea;
+  --color-border: rgba(216, 224, 234, 0.5);
   --color-primary: #1f6feb;
   --color-primary-hover: #185abc;
   --color-header: #071a33;
@@ -15,15 +15,15 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-bg: #081426;
-  --color-surface: #0d1f38;
-  --color-soft: #142a46;
-  --color-text: #f7fbff;
-  --color-muted: #aebbd0;
-  --color-border: #253b59;
-  --color-primary: #4c8dff;
-  --color-primary-hover: #74a7ff;
-  --color-header: #05101f;
+  --color-bg: #0e0e0e;
+  --color-surface: rgba(30, 31, 32, 0.7);
+  --color-soft: #252628;
+  --color-text: #e3e3e3;
+  --color-muted: #9aa0a6;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-primary: #8ab4f8;
+  --color-primary-hover: #aecbfa;
+  --color-header: #131314;
 }
 
 html {

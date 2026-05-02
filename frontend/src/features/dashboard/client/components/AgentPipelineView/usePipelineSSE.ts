@@ -82,6 +82,12 @@ export function usePipelineSSE() {
             newAgentStates[id] = 'error';
           }
         });
+      } else if (event.type === 'PIPELINE_COMPLETE') {
+        (Object.keys(newAgentStates) as AgentId[]).forEach((id) => {
+          if (newAgentStates[id] !== 'idle') {
+            newAgentStates[id] = 'done';
+          }
+        });
       }
 
       let activeTool = prev.activeTool;

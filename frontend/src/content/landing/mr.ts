@@ -10,6 +10,9 @@ export const mr: LandingContent = {
       process: "प्रक्रिया",
       trust: "विश्वास",
       contact: "संपर्क",
+      docs: "दस्तऐवज",
+      github: "गिटहब",
+      demo: "डेमो",
     },
   },
   theme: {

@@ -65,10 +65,10 @@ export function AgentPipelineView({
         </div>
 
         {/* Agent nodes + connectors */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        <div className="flex items-stretch gap-2 overflow-x-auto pb-4 custom-scrollbar">
           {AGENTS.map((agentId, i) => (
-            <div key={agentId} className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="flex-1 min-w-[180px]">
+            <div key={agentId} className="flex items-stretch gap-2 flex-1 min-w-0">
+              <div className="flex-1 min-w-[250px] h-full">
                 <AgentNode
                   agentId={agentId}
                   state={agentStates[agentId]}
@@ -76,11 +76,13 @@ export function AgentPipelineView({
                 />
               </div>
               {i < AGENTS.length - 1 && (
-                <DataPacket
-                  active={i === 0 ? handoff_1_2 : i === 1 ? handoff_2_3 : handoff_3_4}
-                  label="📄"
-                  color={AGENT_META[AGENTS[i + 1]].color}
-                />
+                <div className="self-center">
+                  <DataPacket
+                    active={i === 0 ? handoff_1_2 : i === 1 ? handoff_2_3 : handoff_3_4}
+                    label="📄"
+                    color={AGENT_META[AGENTS[i + 1]].color}
+                  />
+                </div>
               )}
             </div>
           ))}

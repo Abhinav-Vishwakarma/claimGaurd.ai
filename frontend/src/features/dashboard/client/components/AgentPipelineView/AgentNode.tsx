@@ -61,9 +61,9 @@ export function AgentNode({ agentId, state, activeTool }: AgentNodeProps) {
   return (
     <motion.div
       layout
-      className={`relative rounded-2xl border-2 p-5 transition-colors duration-300 ${styles.border} ${styles.glow} ${styles.bg}`}
-      animate={isActive ? { scale: [1, 1.01, 1] } : { scale: 1 }}
-      transition={isActive ? { repeat: Infinity, duration: 2, ease: 'easeInOut' } : {}}
+      className={`h-full flex flex-col relative rounded-2xl border-2 p-5 transition-colors duration-300 ${styles.border} ${styles.glow} ${styles.bg}`}
+      animate={{ scale: isActive ? 1.05 : 1 }}
+      transition={{ duration: 0.3, ease: 'easeInOut' }}
     >
       {/* Animated background pulse for active state */}
       {isActive && (
@@ -75,7 +75,7 @@ export function AgentNode({ agentId, state, activeTool }: AgentNodeProps) {
         />
       )}
 
-      <div className="relative z-10">
+      <div className="relative z-10 flex flex-col h-full">
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -96,7 +96,8 @@ export function AgentNode({ agentId, state, activeTool }: AgentNodeProps) {
           </span>
         </div>
 
-        {/* Thinking dots */}
+        <div className="mt-auto pt-4">
+          {/* Thinking dots */}
         <AnimatePresence>
           {state === 'thinking' && (
             <motion.div
@@ -151,6 +152,7 @@ export function AgentNode({ agentId, state, activeTool }: AgentNodeProps) {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </div>
     </motion.div>
   );

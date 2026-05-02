@@ -10,6 +10,9 @@ export const ta: LandingContent = {
       process: "செயல்முறை",
       trust: "நம்பிக்கை",
       contact: "தொடர்பு",
+      docs: "ஆவணங்கள்",
+      github: "கிட்ஹப்",
+      demo: "டெமோ",
     },
   },
   theme: {

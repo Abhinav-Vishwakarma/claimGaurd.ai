@@ -47,10 +47,15 @@ const formatTime = (ms: number): string => {
 };
 
 export function EventLog({ events }: EventLogProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   }, [events.length]);
 
   return (
@@ -67,7 +72,10 @@ export function EventLog({ events }: EventLogProps) {
       </div>
 
       {/* Events */}
-      <div className="h-64 overflow-y-auto p-3 space-y-1 custom-scrollbar font-mono text-xs">
+      <div 
+        ref={containerRef}
+        className="h-64 overflow-y-auto p-3 space-y-1 custom-scrollbar font-mono text-xs"
+      >
         {events.length === 0 && (
           <div className="flex items-center justify-center h-full text-[var(--color-muted)]">
             Waiting for pipeline to start...
@@ -110,8 +118,6 @@ export function EventLog({ events }: EventLogProps) {
             </motion.div>
           ))}
         </AnimatePresence>
-
-        <div ref={bottomRef} />
       </div>
     </div>
   );

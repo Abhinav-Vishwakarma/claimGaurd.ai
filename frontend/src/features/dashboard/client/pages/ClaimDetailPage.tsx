@@ -247,7 +247,7 @@ export function ClaimDetailPage({ claimId }: { claimId: string }) {
   const hasPaymentRequest = !!claim.paymentRequest;
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-7xl mx-auto w-full">
       {/* Back */}
       <button onClick={() => navigate('/dashboard/claims')} className="flex items-center gap-2 text-sm text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors">
         <ArrowLeft size={16} /> Back to My Claims
