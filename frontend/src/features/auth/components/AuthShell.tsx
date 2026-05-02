@@ -1,10 +1,7 @@
 import type { PropsWithChildren } from "react";
-import { ShieldCheck } from "lucide-react";
 import { Container } from "../../../components/ui/Container";
-import { ThemeToggle } from "../../../components/layout/ThemeToggle";
 import type { LandingContent } from "../../../content/landing";
 import type { UseThemeResult } from "../../../hooks/useTheme";
-import { navigate } from "../../../hooks/usePath";
 import { Navbar } from "../../../components/layout/Navbar";
 import type { UseLanguageResult } from "../../../hooks/useLanguage";
 
