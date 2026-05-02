@@ -5,18 +5,20 @@ import { AGENT_META, TOOL_META } from './pipeline.types';
 
 interface EventLogProps {
   events: AgentEvent[];
+  bufferedEvents?: number;
+  receivedEvents?: number;
 }
 
 const EVENT_ICONS: Record<string, string> = {
-  PIPELINE_START: '🚀',
-  AGENT_STARTED: '▶',
-  AGENT_THINKING: '💭',
-  TOOL_CALL: '→',
-  TOOL_RESULT: '←',
-  AGENT_OUTPUT: '✓',
-  AGENT_HANDOFF: '⇒',
-  PIPELINE_COMPLETE: '🏁',
-  PIPELINE_ERROR: '✗',
+  PIPELINE_START: '>>',
+  AGENT_STARTED: '>',
+  AGENT_THINKING: '...',
+  TOOL_CALL: '->',
+  TOOL_RESULT: '<-',
+  AGENT_OUTPUT: 'OK',
+  AGENT_HANDOFF: '=>',
+  PIPELINE_COMPLETE: 'END',
+  PIPELINE_ERROR: 'XX',
 };
 
 const EVENT_COLORS: Record<string, string> = {
@@ -46,28 +48,37 @@ const formatTime = (ms: number): string => {
   return `${(ms / 1000).toFixed(1)}s`;
 };
 
-export function EventLog({ events }: EventLogProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+export function EventLog({ events, bufferedEvents = 0, receivedEvents = events.length }: EventLogProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (containerRef.current) {
+      containerRef.current.scrollTo({
+        top: containerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [events.length]);
 
   return (
     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-soft)]">
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
-          Live Agent Log
+          Delayed Agent Log
         </span>
         <span className="ml-auto text-xs text-[var(--color-muted)]">
-          {events.length} event{events.length !== 1 ? 's' : ''}
+          {events.length}/{receivedEvents} shown
+        </span>
+        <span className="text-xs text-[var(--color-muted)]">
+          {bufferedEvents > 0 ? `${bufferedEvents} queued` : 'live'}
         </span>
       </div>
 
-      {/* Events */}
-      <div className="h-64 overflow-y-auto p-3 space-y-1 custom-scrollbar font-mono text-xs">
+      <div
+        ref={containerRef}
+        className="h-64 overflow-y-auto p-3 space-y-1 custom-scrollbar font-mono text-xs"
+      >
         {events.length === 0 && (
           <div className="flex items-center justify-center h-full text-[var(--color-muted)]">
             Waiting for pipeline to start...
@@ -83,17 +94,14 @@ export function EventLog({ events }: EventLogProps) {
               transition={{ duration: 0.2 }}
               className="flex items-start gap-2 py-0.5"
             >
-              {/* Time */}
               <span className="text-[var(--color-muted)] w-12 flex-shrink-0 pt-0.5">
                 {formatTime(event.t)}
               </span>
 
-              {/* Icon */}
-              <span className={`flex-shrink-0 w-4 text-center ${EVENT_COLORS[event.type] ?? 'text-[var(--color-muted)]'}`}>
-                {EVENT_ICONS[event.type] ?? '·'}
+              <span className={`flex-shrink-0 w-8 text-center ${EVENT_COLORS[event.type] ?? 'text-[var(--color-muted)]'}`}>
+                {EVENT_ICONS[event.type] ?? '..'}
               </span>
 
-              {/* Content */}
               <div className="flex-1 min-w-0">
                 <span className={`font-semibold ${EVENT_COLORS[event.type] ?? ''}`}>
                   [{getAgentLabel(event.agent)}]
@@ -110,8 +118,6 @@ export function EventLog({ events }: EventLogProps) {
             </motion.div>
           ))}
         </AnimatePresence>
-
-        <div ref={bottomRef} />
       </div>
     </div>
   );

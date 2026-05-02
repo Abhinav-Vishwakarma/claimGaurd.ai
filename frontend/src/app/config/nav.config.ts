@@ -11,4 +11,7 @@ export const navItems: NavItem[] = [
   { id: "process", href: "#process", labelKey: "process" },
   { id: "trust", href: "#trust", labelKey: "trust" },
   { id: "contact", href: "#contact", labelKey: "contact" },
+  { id: "docs", href: "/docs", labelKey: "docs" },
+  { id: "github", href: "https://github.com/Abhinav-Vishwakarma/claimGaurd.ai", labelKey: "github" },
+  { id: "demo", href: "#demo", labelKey: "demo" },
 ];

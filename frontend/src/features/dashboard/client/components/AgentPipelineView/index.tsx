@@ -1,10 +1,17 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { ShieldCheck, ShieldAlert, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState } from 'react';
 import { AgentNode } from './AgentNode';
 import { DataPacket } from './DataPacket';
 import { EventLog } from './EventLog';
-import { AGENT_META, type AgentId, type AgentState, type FinalPipelineResult, type ClinicalValidationReport, type GatekeeperReport } from './pipeline.types';
-import { ShieldCheck, ShieldAlert, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import {
+  AGENT_META,
+  type AgentId,
+  type AgentState,
+  type FinalPipelineResult,
+  type ClinicalValidationReport,
+  type GatekeeperReport,
+} from './pipeline.types';
 
 interface AgentPipelineViewProps {
   status: 'idle' | 'running' | 'complete' | 'error';
@@ -12,6 +19,8 @@ interface AgentPipelineViewProps {
   activeAgent: AgentId | null;
   activeTool: string | null;
   events: ReturnType<typeof import('./usePipelineSSE').usePipelineSSE>['events'];
+  bufferedEvents: number;
+  receivedEvents: number;
   finalResult: FinalPipelineResult | null;
   error: string | null;
 }
@@ -21,10 +30,8 @@ const AGENTS: Exclude<AgentId, 'system'>[] = ['agent_1', 'agent_2', 'agent_3', '
 const isHandoffActive = (
   from: Exclude<AgentId, 'system'>,
   to: Exclude<AgentId, 'system'>,
-  _activeAgent: AgentId | null,
   agentStates: Record<AgentId, AgentState>,
 ): boolean => {
-  // packet flies when the "from" agent is done and "to" agent is active/thinking
   const fromState = agentStates[from];
   const toState = agentStates[to];
   return fromState === 'done' && (toState === 'active' || toState === 'thinking' || toState === 'tool_calling');
@@ -36,58 +43,102 @@ export function AgentPipelineView({
   activeAgent,
   activeTool,
   events,
+  bufferedEvents,
+  receivedEvents,
   finalResult,
   error,
 }: AgentPipelineViewProps) {
-  const handoff_1_2 = isHandoffActive('agent_1', 'agent_2', activeAgent, agentStates);
-  const handoff_2_3 = isHandoffActive('agent_2', 'agent_3', activeAgent, agentStates);
-  const handoff_3_4 = isHandoffActive('agent_3', 'agent_4', activeAgent, agentStates);
+  const handoff_1_2 = isHandoffActive('agent_1', 'agent_2', agentStates);
+  const handoff_2_3 = isHandoffActive('agent_2', 'agent_3', agentStates);
+  const handoff_3_4 = isHandoffActive('agent_3', 'agent_4', agentStates);
+  const activeIndex = activeAgent && activeAgent !== 'system'
+    ? AGENTS.indexOf(activeAgent)
+    : AGENTS.findLastIndex((agentId) => agentStates[agentId] !== 'idle');
+  const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+  const shouldStack = status === 'running';
 
   return (
     <div className="space-y-6">
-
-      {/* ── Agent Pipeline Graph ───────────────────────────────────────────── */}
       <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
-        {/* Status bar */}
         <div className="flex items-center gap-2 mb-5">
           <div className={`w-2 h-2 rounded-full ${
             status === 'running' ? 'bg-blue-400 animate-pulse'
-            : status === 'complete' ? 'bg-emerald-400'
-            : status === 'error' ? 'bg-red-400 animate-pulse'
-            : 'bg-[var(--color-border)]'
+              : status === 'complete' ? 'bg-emerald-400'
+                : status === 'error' ? 'bg-red-400 animate-pulse'
+                  : 'bg-[var(--color-border)]'
           }`} />
           <span className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
             {status === 'idle' ? 'Ready'
               : status === 'running' ? 'Pipeline Running...'
-              : status === 'complete' ? 'Analysis Complete'
-              : '⛔ Pipeline Halted'}
+                : status === 'complete' ? 'Analysis Complete'
+                  : 'Pipeline Halted'}
           </span>
         </div>
 
-        {/* Agent nodes + connectors */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          {AGENTS.map((agentId, i) => (
-            <div key={agentId} className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="flex-1 min-w-[180px]">
-                <AgentNode
-                  agentId={agentId}
-                  state={agentStates[agentId]}
-                  activeTool={activeAgent === agentId ? activeTool : null}
-                />
+        {shouldStack ? (
+          <div className="relative mx-auto min-h-[460px] max-w-3xl overflow-hidden py-4">
+            {AGENTS.map((agentId, i) => {
+              const distance = i - currentIndex;
+              const absDistance = Math.abs(distance);
+              const isFocused = i === currentIndex;
+
+              return (
+                <motion.div
+                  key={agentId}
+                  layout
+                  initial={false}
+                  animate={{
+                    y: distance * 64,
+                    scale: isFocused ? 1 : Math.max(0.84, 0.96 - absDistance * 0.06),
+                    opacity: isFocused ? 1 : Math.max(0.35, 0.92 - absDistance * 0.2),
+                    zIndex: 20 - absDistance,
+                  }}
+                  transition={{ type: 'spring', stiffness: 220, damping: 24 }}
+                  className="absolute left-1/2 top-0 w-full max-w-2xl -translate-x-1/2 px-2"
+                >
+                  <AgentNode
+                    agentId={agentId}
+                    state={agentStates[agentId]}
+                    activeTool={activeAgent === agentId ? activeTool : null}
+                    stackMode
+                    stepNumber={i + 1}
+                  />
+                </motion.div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-stretch gap-2 overflow-x-auto pb-4 custom-scrollbar">
+            {AGENTS.map((agentId, i) => (
+              <div key={agentId} className="flex items-stretch gap-2 flex-1 min-w-0">
+                <div className="flex-1 min-w-[250px] h-full">
+                  <AgentNode
+                    agentId={agentId}
+                    state={agentStates[agentId]}
+                    activeTool={activeAgent === agentId ? activeTool : null}
+                    stepNumber={i + 1}
+                  />
+                </div>
+                {i < AGENTS.length - 1 && (
+                  <div className="self-center">
+                    <DataPacket
+                      active={i === 0 ? handoff_1_2 : i === 1 ? handoff_2_3 : handoff_3_4}
+                      label="PDF"
+                      color={AGENT_META[AGENTS[i + 1]].color}
+                    />
+                  </div>
+                )}
               </div>
-              {i < AGENTS.length - 1 && (
-                <DataPacket
-                  active={i === 0 ? handoff_1_2 : i === 1 ? handoff_2_3 : handoff_3_4}
-                  label="📄"
-                  color={AGENT_META[AGENTS[i + 1]].color}
-                />
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
+        )}
+
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-muted)]">
+          <span>Playback delay: 1 second per event</span>
+          <span>{bufferedEvents > 0 ? `Buffered in memory: ${bufferedEvents} waiting` : 'Playback caught up'}</span>
         </div>
       </div>
 
-      {/* ── Error Halt Banner (prominent, impossible to miss) ──────────────── */}
       <AnimatePresence>
         {status === 'error' && error && (
           <motion.div
@@ -102,9 +153,9 @@ export function AgentPipelineView({
                 <AlertTriangle className="text-white" size={22} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-red-400 text-base">Pipeline Halted — Action Required</p>
+                <p className="font-bold text-red-400 text-base">Pipeline Halted - Action Required</p>
                 <p className="text-sm text-red-300 mt-1.5 leading-relaxed break-words">
-                  {error.length > 250 ? error.slice(0, 250) + '…' : error}
+                  {error.length > 250 ? `${error.slice(0, 250)}...` : error}
                 </p>
                 <p className="text-xs text-[var(--color-muted)] mt-2">
                   Check the event log below for the full trace. Click <strong>Start New Analysis</strong> to retry.
@@ -115,10 +166,8 @@ export function AgentPipelineView({
         )}
       </AnimatePresence>
 
-      {/* ── Live Event Log ─────────────────────────────────────────────────── */}
-      <EventLog events={events} />
+      <EventLog events={events} bufferedEvents={bufferedEvents} receivedEvents={receivedEvents} />
 
-      {/* ── Final Verdict Card ─────────────────────────────────────────────── */}
       <AnimatePresence>
         {finalResult && (
           <motion.div
@@ -130,13 +179,9 @@ export function AgentPipelineView({
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }
-
-
-// ─── Verdict Card ─────────────────────────────────────────────────────────────
 
 function VerdictCard({ result }: { result: FinalPipelineResult }) {
   const [showValidation, setShowValidation] = useState(false);
@@ -147,7 +192,6 @@ function VerdictCard({ result }: { result: FinalPipelineResult }) {
 
   return (
     <div className="space-y-4">
-      {/* Main verdict banner */}
       <div className={`p-6 rounded-2xl border-2 ${
         isClaimable
           ? 'bg-emerald-500/10 border-emerald-500/40'
@@ -161,7 +205,7 @@ function VerdictCard({ result }: { result: FinalPipelineResult }) {
           </div>
           <div>
             <h3 className={`text-2xl font-black ${isClaimable ? 'text-emerald-400' : isNeeds ? 'text-amber-400' : 'text-red-400'}`}>
-              {isClaimable ? '✅ CLAIMABLE' : isNeeds ? '⚠️ NEEDS REVIEW' : '❌ NOT CLAIMABLE'}
+              {isClaimable ? 'CLAIMABLE' : isNeeds ? 'NEEDS REVIEW' : 'NOT CLAIMABLE'}
             </h3>
             <p className="text-sm text-[var(--color-muted)] mt-1 max-w-xl leading-relaxed">
               {result.verdictSummary}
@@ -169,7 +213,6 @@ function VerdictCard({ result }: { result: FinalPipelineResult }) {
           </div>
         </div>
 
-        {/* Reason bullets */}
         {result.verdictReasons.length > 0 && (
           <div className="mt-4 space-y-2">
             <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">Reasons</p>
@@ -183,10 +226,9 @@ function VerdictCard({ result }: { result: FinalPipelineResult }) {
         )}
       </div>
 
-      {/* Agent 2 Clinical Validation detail */}
       {result.validationReport && (
         <ExpandableSection
-          title="⚖️ Agent 2 — Clinical Validation Report"
+          title="Agent 2 - Clinical Validation Report"
           open={showValidation}
           onToggle={() => setShowValidation(!showValidation)}
         >
@@ -194,10 +236,9 @@ function VerdictCard({ result }: { result: FinalPipelineResult }) {
         </ExpandableSection>
       )}
 
-      {/* Agent 3 Gatekeeper detail */}
       {result.gatekeeperReport && (
         <ExpandableSection
-          title="🛡️ Agent 3 — Integrity Gatekeeper Report"
+          title="Agent 3 - Integrity Gatekeeper Report"
           open={showGatekeeper}
           onToggle={() => setShowGatekeeper(!showGatekeeper)}
         >
@@ -209,7 +250,10 @@ function VerdictCard({ result }: { result: FinalPipelineResult }) {
 }
 
 function ExpandableSection({ title, open, onToggle, children }: {
-  title: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
@@ -241,7 +285,6 @@ function ValidationDetail({ report }: { report: ClinicalValidationReport }) {
   return (
     <div className="space-y-4 pt-4 text-sm">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Matched condition */}
         <div className="p-3 bg-[var(--color-soft)] rounded-xl">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] mb-1">Matched Condition</p>
           <p className="font-semibold">{report.matched_condition ?? 'Unknown'}</p>
@@ -250,28 +293,24 @@ function ValidationDetail({ report }: { report: ClinicalValidationReport }) {
           </p>
         </div>
 
-        {/* ICD-10 Specificity */}
         <StatusTile
           label="ICD-10 Specificity"
           passed={report.icd10_specificity.is_leaf_node && !report.icd10_specificity.non_billable_hit}
           detail={report.icd10_specificity.reason}
         />
 
-        {/* Medical Necessity */}
         <StatusTile
           label="Medical Necessity"
           passed={report.medical_necessity.passed}
           detail={report.medical_necessity.reason}
         />
 
-        {/* Fraud: Upcoding */}
         <StatusTile
           label={`Upcoding Check (${report.fraud_detection.upcoding.severity})`}
           passed={report.fraud_detection.upcoding.type === 'NONE'}
           detail={report.fraud_detection.upcoding.description}
         />
 
-        {/* Fraud: Unbundling */}
         <StatusTile
           label={`Unbundling Check (${report.fraud_detection.unbundling.severity})`}
           passed={report.fraud_detection.unbundling.type === 'NONE'}
@@ -279,7 +318,6 @@ function ValidationDetail({ report }: { report: ClinicalValidationReport }) {
         />
       </div>
 
-      {/* Unauthorized CPTs */}
       {report.medical_necessity.unauthorized_cpts.length > 0 && (
         <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
           <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-2">Unauthorized CPT Codes</p>
@@ -291,7 +329,6 @@ function ValidationDetail({ report }: { report: ClinicalValidationReport }) {
         </div>
       )}
 
-      {/* AI Fraud Reasoning */}
       <div className="p-3 bg-[var(--color-soft)] rounded-xl">
         <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] mb-1">Groq AI Fraud Assessment</p>
         <p className="text-xs text-[var(--color-text)] leading-relaxed">{report.fraud_detection.ai_reasoning}</p>
@@ -330,7 +367,7 @@ function StatusTile({ label, passed, detail }: { label: string; passed: boolean;
       <div className="flex items-center justify-between mb-1">
         <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">{label}</p>
         <span className={`text-xs font-bold ${passed ? 'text-emerald-400' : 'text-red-400'}`}>
-          {passed ? '✓' : '✗'}
+          {passed ? 'OK' : 'X'}
         </span>
       </div>
       {detail && <p className="text-xs text-[var(--color-muted)] leading-relaxed">{detail}</p>}

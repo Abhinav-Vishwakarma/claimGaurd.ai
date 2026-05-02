@@ -2,7 +2,7 @@ export type Locale = "en" | "hi" | "ta" | "mr";
 
 export type ThemeMode = "system" | "light" | "dark";
 
-export type NavLabelKey = "features" | "process" | "trust" | "contact";
+export type NavLabelKey = "features" | "process" | "trust" | "contact" | "docs" | "github" | "demo";
 
 type TextBlock = {
   title: string;

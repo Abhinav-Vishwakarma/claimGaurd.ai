@@ -6,9 +6,11 @@ type MobileNavProps = {
   content: LandingContent;
   isOpen: boolean;
   onClose: () => void;
+  user?: { email: string; role: string };
+  onLogout?: () => void;
 };
 
-export function MobileNav({ content, isOpen, onClose }: MobileNavProps) {
+export function MobileNav({ content, isOpen, onClose, user, onLogout }: MobileNavProps) {
   if (!isOpen) {
     return null;
   }
@@ -26,26 +28,41 @@ export function MobileNav({ content, isOpen, onClose }: MobileNavProps) {
             {content.nav.items[item.labelKey]}
           </a>
         ))}
-        <button
-          className="rounded-md px-3 py-2 text-left text-sm font-bold text-[var(--color-muted)] transition hover:bg-[var(--color-soft)] hover:text-[var(--color-text)]"
-          onClick={() => {
-            navigate("/login");
-            onClose();
-          }}
-          type="button"
-        >
-          Login
-        </button>
-        <button
-          className="rounded-md bg-[var(--color-primary)] px-3 py-2 text-left text-sm font-bold text-white transition hover:bg-[var(--color-primary-hover)]"
-          onClick={() => {
-            navigate("/register");
-            onClose();
-          }}
-          type="button"
-        >
-          Register
-        </button>
+        {user ? (
+          <button
+            className="rounded-md px-3 py-2 text-left text-sm font-bold text-[var(--color-muted)] transition hover:bg-[var(--color-soft)] hover:text-[var(--color-text)]"
+            onClick={() => {
+              onLogout?.();
+              onClose();
+            }}
+            type="button"
+          >
+            Logout
+          </button>
+        ) : (
+          <>
+            <button
+              className="rounded-md px-3 py-2 text-left text-sm font-bold text-[var(--color-muted)] transition hover:bg-[var(--color-soft)] hover:text-[var(--color-text)]"
+              onClick={() => {
+                navigate("/login");
+                onClose();
+              }}
+              type="button"
+            >
+              Login
+            </button>
+            <button
+              className="rounded-md bg-[var(--color-primary)] px-3 py-2 text-left text-sm font-bold text-white transition hover:bg-[var(--color-primary-hover)]"
+              onClick={() => {
+                navigate("/register");
+                onClose();
+              }}
+              type="button"
+            >
+              Register
+            </button>
+          </>
+        )}
       </nav>
     </div>
   );

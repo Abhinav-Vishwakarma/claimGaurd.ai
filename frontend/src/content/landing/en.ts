@@ -10,6 +10,9 @@ export const en: LandingContent = {
       process: "Process",
       trust: "Trust",
       contact: "Contact",
+      docs: "Docs",
+      github: "GitHub",
+      demo: "Demo",
     },
   },
   theme: {

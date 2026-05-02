@@ -11,7 +11,7 @@ type AuthCardProps = PropsWithChildren<{
 export function AuthCard({ children, title, description, submitLabel, isSubmitting, onSubmit }: AuthCardProps) {
   return (
     <form
-      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-xl shadow-black/5"
+      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-md p-6 shadow-xl shadow-black/5"
       onSubmit={onSubmit}
     >
       <h1 className="text-2xl font-bold text-[var(--color-text)]">{title}</h1>

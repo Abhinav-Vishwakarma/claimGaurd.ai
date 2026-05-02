@@ -11,6 +11,7 @@ export type ServiceMap = {
     prescription: {
       ordered_service: string | null;
       reason: string | null;
+      ordered_cpts?: string[];
       signature_verified: boolean | null;
     };
     lab_report: {

@@ -1,7 +1,8 @@
-import { Activity, FileCheck2, LogOut, ShieldCheck } from "lucide-react";
+import { Activity, FileCheck2, ShieldCheck } from "lucide-react";
 import { useEffect } from "react";
+import { Navbar } from "../../components/layout/Navbar";
+import type { UseLanguageResult } from "../../hooks/useLanguage";
 import { Container } from "../../components/ui/Container";
-import { ThemeToggle } from "../../components/layout/ThemeToggle";
 import type { LandingContent } from "../../content/landing";
 import type { UseThemeResult } from "../../hooks/useTheme";
 import { navigate } from "../../hooks/usePath";
@@ -9,10 +10,11 @@ import { useLogout, useMe } from "../auth/auth.hooks";
 
 type HomePageProps = {
   content: LandingContent;
+  language: UseLanguageResult;
   theme: UseThemeResult;
 };
 
-export function HomePage({ content, theme }: HomePageProps) {
+export function HomePage({ content, language, theme }: HomePageProps) {
   const me = useMe();
   const logout = useLogout();
   const user = me.data?.user;
@@ -23,27 +25,13 @@ export function HomePage({ content, theme }: HomePageProps) {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
-      <header className="border-b border-[var(--color-border)] bg-[var(--color-header)] text-white">
-        <Container>
-          <div className="flex min-h-16 items-center justify-between gap-4">
-            <button className="flex items-center gap-2 text-lg font-bold" onClick={() => navigate("/")} type="button">
-              <ShieldCheck aria-hidden="true" size={22} />
-              ClaimGuard.ai
-            </button>
-            <div className="flex items-center gap-2">
-              <ThemeToggle labels={content.theme} theme={theme} />
-              <button
-                className="grid h-10 w-10 place-items-center rounded-md border border-white/20 text-white transition hover:bg-white/10"
-                onClick={() => logout.mutate()}
-                title="Logout"
-                type="button"
-              >
-                <LogOut aria-hidden="true" size={18} />
-              </button>
-            </div>
-          </div>
-        </Container>
-      </header>
+      <Navbar
+        content={content}
+        language={language}
+        onLogout={() => logout.mutate()}
+        theme={theme}
+        user={user ? { email: user.email, role: user.role } : undefined}
+      />
 
       <main className="py-10">
         <Container>

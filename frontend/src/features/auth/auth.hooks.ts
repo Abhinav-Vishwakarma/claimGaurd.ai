@@ -44,6 +44,9 @@ export function useLogout() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    onMutate: () => {
+      toast.info("Logging out...");
+    },
     mutationFn: async () => {
       const refreshToken = getRefreshToken();
       if (refreshToken) await authApi.logout(refreshToken);

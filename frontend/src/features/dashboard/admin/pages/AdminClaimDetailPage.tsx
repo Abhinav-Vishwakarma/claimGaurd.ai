@@ -79,9 +79,10 @@ function FRow({ label, value, muted, bold, className }: {
 
 // ─── Admin Decision Panel ─────────────────────────────────────────────────────
 
-function DecisionPanel({ claimId, insurerPays, onDecisionMade }: {
+function DecisionPanel({ claimId, insurerPays, aiReasons, onDecisionMade }: {
   claimId: string;
   insurerPays: number;
+  aiReasons: string[];
   onDecisionMade: () => void;
 }) {
   const { mutateAsync, isPending, error } = useMakeDecision(claimId);
@@ -159,8 +160,17 @@ function DecisionPanel({ claimId, insurerPays, onDecisionMade }: {
       )}
 
       <div>
-        <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
-          Admin Remark {decision === 'REJECTED' ? '(Required)' : '(Optional)'}
+        <label className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)] flex justify-between items-center">
+          <span>Admin Remark {decision === 'REJECTED' ? '(Required)' : '(Optional)'}</span>
+          {aiReasons.length > 0 && (
+             <button
+                type="button"
+                className="text-[var(--color-primary)] hover:underline normal-case tracking-normal"
+                onClick={() => setRemark(aiReasons.map(r => `• ${r}`).join('\n'))}
+             >
+               Use AI Reasons
+             </button>
+          )}
         </label>
         <textarea
           value={remark}
@@ -272,8 +282,10 @@ export function AdminClaimDetailPage({ claimId }: { claimId: string }) {
     (!analysisStarted && !!claim.claimSession)
   );
 
+  const aiReasons = liveAdj?.notes || adj?.notes || [];
+
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-7xl mx-auto w-full">
       {/* Back */}
       <button
         onClick={() => navigate('/dashboard/claims')}
@@ -366,6 +378,8 @@ export function AdminClaimDetailPage({ claimId }: { claimId: string }) {
           activeAgent={pipeline.activeAgent}
           activeTool={pipeline.activeTool}
           events={pipeline.events}
+          bufferedEvents={pipeline.bufferedEvents}
+          receivedEvents={pipeline.receivedEvents}
           finalResult={showVerdict ? pipeline.finalResult : null}
           error={pipeline.error}
         />
@@ -394,6 +408,7 @@ export function AdminClaimDetailPage({ claimId }: { claimId: string }) {
         <DecisionPanel
           claimId={claimId}
           insurerPays={insurerPays}
+          aiReasons={aiReasons}
           onDecisionMade={() => refetch()}
         />
       )}

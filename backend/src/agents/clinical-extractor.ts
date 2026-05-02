@@ -1,9 +1,12 @@
 import { aiService } from '../api/ai/ai.service';
+import type { ServiceMap } from '../api/ocr/ocr.types';
 import { detectFileCategory, parseDocumentLocally } from '../utils/document-parser';
 import type { AgentSession } from '../utils/agent-session';
-import type { ServiceMap } from '../api/ocr/ocr.types';
-
-// ─── Prompts ──────────────────────────────────────────────────────────────────
+import {
+  PipelineAuditLogger,
+  buildCriticalNullIssues,
+  buildServiceMapFieldAudit,
+} from '../utils/pipeline-audit';
 
 const BASE_SCHEMA = `{
   "metadata": {
@@ -36,25 +39,91 @@ const BASE_SCHEMA = `{
 }`;
 
 const RULES = `STRICT RULES:
-1. Return ONLY a raw JSON object — NO markdown, NO code fences, NO explanation text.
+1. Return ONLY a raw JSON object - NO markdown, NO code fences, NO explanation text.
 2. Use null for any field you cannot find in the document.
 3. Do NOT hallucinate or invent data. Only extract what is present.
 4. cpt_codes must be an array of strings (can be empty []).
 5. risk_factors and comorbidities must be arrays of strings (can be empty []).`;
 
-/**
- * Prompt used when text has been extracted locally (PDF/DOCX path).
- * Sends extracted text to an LLM for structured parsing — no vision needed.
- */
+const PRESCRIPTION_SCHEMA_OVERRIDE = `{
+  "metadata": {
+    "patient_id": "<string or null>",
+    "date_of_service": "<YYYY-MM-DD or null>",
+    "provider_npi": "<string or null>",
+    "claim_type": "<PPO|HMO|Medicare|Medicaid|etc or null>"
+  },
+  "triangulation_data": {
+    "prescription": {
+      "ordered_service": "<concatenate ALL procedure/test descriptions from the procedures table as a comma-separated string>",
+      "reason": "<concatenate ALL reason/indication/clinical reason values from the procedures table as a comma-separated string>",
+      "ordered_cpts": ["<array of all CPT code strings from the procedures table>"],
+      "signature_verified": "<true|false|null>"
+    },
+    "lab_report": {
+      "performed_service": "<e.g. CPT 71045 or null>",
+      "findings_summary": "<e.g. No signs of consolidation or null>",
+      "vitals": "<object like { BP: '120/80' } or null>"
+    },
+    "billing": {
+      "cpt_codes": ["<array of CPT code strings>"],
+      "billed_amount": "<number or null>"
+    }
+  },
+  "predictive_signals": {
+    "risk_factors": ["<array of risk factor strings>"],
+    "comorbidities": ["<array of comorbidity strings>"],
+    "next_recommended_visit": "<e.g. 90 days or null>"
+  }
+}`;
+
+const PRESCRIPTION_EXTRACTION_RULES = `CRITICAL EXTRACTION RULES FOR PRESCRIPTION DOCUMENTS:
+
+1. Locate the procedures or tests ordered table in the document.
+2. For "ordered_service": concatenate every value in the Description or Service column
+   into one comma-separated string. Example: "Chest X-ray (Single View), Rapid Influenza Test,
+   COVID-19 + Influenza Combo, Nebulization Therapy, OPD Consultation (New Pt)"
+3. For "reason": concatenate every value in the Reason or Indication or Clinical Reason
+   column into one comma-separated string. Example: "Rule out pneumonia, Viral etiology check,
+   Differential diagnosis, Bronchodilation / breathing support, Initial evaluation & management"
+4. For "ordered_cpts": extract every CPT code from the CPT Code column as an array of strings.
+5. NEVER return null for ordered_service or reason if a procedures table exists in the document.
+6. For "billed_amount" in billing section: prescriptions do not have billing amounts,
+   set this to null intentionally - this is correct behavior.
+7. For "signature_verified": set to true if a physician signature, name, or license number
+   appears at the bottom of the document.`;
+
+const normalizePatientId = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase();
+  return normalized || null;
+};
+
+const normalizeServiceMap = (serviceMap: ServiceMap): ServiceMap => {
+  if (serviceMap.metadata.patient_id) {
+    serviceMap.metadata.patient_id = normalizePatientId(serviceMap.metadata.patient_id);
+  }
+
+  if (!Array.isArray(serviceMap.triangulation_data.prescription.ordered_cpts)) {
+    serviceMap.triangulation_data.prescription.ordered_cpts = [];
+  }
+
+  return serviceMap;
+};
+
 const buildTextExtractionPrompt = (
   docType: string,
   extractedText: string,
   filename: string,
-): string => `You are a medical claim document intelligence engine.
+): string => {
+  const isPrescription = docType === 'prescription';
+  const schema = isPrescription ? PRESCRIPTION_SCHEMA_OVERRIDE : BASE_SCHEMA;
+  const additionalRules = isPrescription ? `\n\n${PRESCRIPTION_EXTRACTION_RULES}` : '';
+
+  return `You are a medical claim document intelligence engine.
 
 Document type: ${docType}
 Source file: ${filename}
-Extraction method: LOCAL TEXT EXTRACTION (PDF/DOCX parsed server-side — no OCR required)
+Extraction method: LOCAL TEXT EXTRACTION (PDF/DOCX parsed server-side - no OCR required)
 
 Extracted document text:
 --- BEGIN DOCUMENT TEXT ---
@@ -62,13 +131,12 @@ ${extractedText.slice(0, 12000)}${extractedText.length > 12000 ? '\n[... truncat
 --- END DOCUMENT TEXT ---
 
 ${RULES}
+${additionalRules}
 
 Return exactly this JSON schema:
-${BASE_SCHEMA}`;
+${schema}`;
+};
 
-/**
- * Prompt used when a raw image is sent directly to Gemini Vision.
- */
 const buildVisionPrompt = (docType: string): string =>
   `You are a medical claim document intelligence engine.
 
@@ -80,8 +148,6 @@ ${RULES}
 
 Return exactly this JSON schema:
 ${BASE_SCHEMA}`;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fetchBuffer = async (url: string): Promise<{ buffer: Buffer; mimeType: string }> => {
   const response = await fetch(url);
@@ -97,55 +163,90 @@ const fetchBuffer = async (url: string): Promise<{ buffer: Buffer; mimeType: str
 };
 
 const parseServiceMap = (text: string): ServiceMap => {
-  const cleaned = text
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   try {
     return JSON.parse(cleaned) as ServiceMap;
   } catch {
-    const err = new Error(
-      `AI returned unparseable output. Raw: ${cleaned.slice(0, 200)}`,
-    );
+    const err = new Error(`AI returned unparseable output. Raw: ${cleaned.slice(0, 200)}`);
     Object.assign(err, { status: 422 });
     throw err;
   }
 };
 
-// ─── Agent ───────────────────────────────────────────────────────────────────
-
 export type ExtractionInput = {
   fileUrl: string;
   filename: string;
   docType: 'prescription' | 'bill' | 'lab_report';
-  session?: AgentSession; // optional — used when called from the full pipeline
+  session?: AgentSession;
+  auditLogger?: PipelineAuditLogger;
+};
+
+const auditExtractionResult = (input: {
+  auditLogger?: PipelineAuditLogger;
+  docType: ExtractionInput['docType'];
+  filename: string;
+  llmService: 'groq' | 'google';
+  prompt: string;
+  rawResponseText: string;
+  parsedServiceMap: ServiceMap;
+  rawExtractedText?: string | null;
+  extractionMethod: string;
+  issues?: Array<{ code: string; message: string }>;
+}) => {
+  const {
+    auditLogger,
+    docType,
+    filename,
+    llmService,
+    prompt,
+    rawResponseText,
+    parsedServiceMap,
+    rawExtractedText,
+    extractionMethod,
+    issues = [],
+  } = input;
+
+  if (!auditLogger) return;
+
+  const { fieldAudit, dataCompletenessScore } = buildServiceMapFieldAudit(parsedServiceMap);
+  const criticalIssues = buildCriticalNullIssues(parsedServiceMap, rawExtractedText);
+
+  auditLogger.addPhase({
+    phase: `agent_1_extraction_${docType}`,
+    agent: 'agent_1',
+    status: criticalIssues.length > 0 || issues.length > 0 ? 'warn' : 'ok',
+    input_snapshot: {
+      filename,
+      doc_type: docType,
+      llm_service: llmService,
+      extraction_method: extractionMethod,
+      raw_extracted_text: rawExtractedText ?? null,
+      raw_prompt: prompt,
+    },
+    output_snapshot: {
+      raw_llm_response_text: rawResponseText,
+      parsed_service_map: parsedServiceMap,
+      data_completeness_score: dataCompletenessScore,
+    },
+    field_audit: fieldAudit,
+    issues: [...criticalIssues, ...issues],
+  });
 };
 
 export const clinicalExtractor = {
-  /**
-   * Smart extraction router:
-   *  - PDF / DOCX → local text extraction (pdf-parse / mammoth) → Groq text LLM
-   *  - Image       → Gemini Vision (base64 inline)
-   *
-   * Emits AgentSession events if a session is provided.
-   */
   extract: async (input: ExtractionInput): Promise<ServiceMap> => {
-    const { fileUrl, filename, docType, session } = input;
-
-    // ── Step 1: Fetch the file ─────────────────────────────────────────────
+    const { fileUrl, filename, docType, session, auditLogger } = input;
     const { buffer, mimeType } = await fetchBuffer(fileUrl);
     const fileCategory = detectFileCategory(filename, mimeType);
 
-    // ── Step 2: Route based on file type ──────────────────────────────────
     if (fileCategory === 'pdf' || fileCategory === 'docx') {
-      // ── LOCAL EXTRACTION PATH (PDF / DOCX) ────────────────────────────
       const methodLabel = fileCategory === 'pdf' ? 'pdf-parse' : 'mammoth (DOCX)';
 
       session?.emit({
         agent: 'agent_1',
         type: 'TOOL_CALL',
         tool: `local_${fileCategory}_parser`,
-        message: `📄 ${filename} is a ${fileCategory.toUpperCase()} — extracting text locally via ${methodLabel} (skipping LLM OCR)`,
+        message: `${filename} is a ${fileCategory.toUpperCase()} - extracting text locally via ${methodLabel}`,
       });
 
       let parsed;
@@ -156,25 +257,23 @@ export const clinicalExtractor = {
           agent: 'agent_1',
           type: 'TOOL_RESULT',
           tool: `local_${fileCategory}_parser`,
-          message: `⚠️ Local parsing failed: ${(parseErr as Error).message} — falling back to LLM vision`,
+          message: `Local parsing failed: ${(parseErr as Error).message} - falling back to LLM vision`,
         });
-        // Fallback: treat as image and send to Gemini anyway
-        return clinicalExtractor.extract({ ...input, session: undefined });
+        return clinicalExtractor.extract({ ...input, session: undefined, auditLogger });
       }
 
       session?.emit({
         agent: 'agent_1',
         type: 'TOOL_RESULT',
         tool: `local_${fileCategory}_parser`,
-        message: `✅ Local extraction complete — ${parsed.charCount.toLocaleString()} characters${parsed.pageCount ? `, ${parsed.pageCount} pages` : ''} extracted. Sending text to Groq for structured parsing...`,
+        message: `Local extraction complete - ${parsed.charCount.toLocaleString()} characters${parsed.pageCount ? `, ${parsed.pageCount} pages` : ''} extracted`,
       });
 
       if (!parsed.text || parsed.text.length < 20) {
-        // Scanned PDF with no embedded text — fall back to Gemini Vision
         session?.emit({
           agent: 'agent_1',
           type: 'AGENT_THINKING',
-          message: `⚠️ No embedded text found in ${filename} (likely a scanned PDF image) — switching to Gemini Vision OCR`,
+          message: `No embedded text found in ${filename} - switching to Gemini Vision OCR`,
         });
 
         session?.emit({
@@ -184,101 +283,210 @@ export const clinicalExtractor = {
           message: 'Falling back: sending scanned PDF as image to Gemini Vision...',
         });
 
-        return clinicalExtractor._extractViaGeminiVision({ buffer, mimeType: 'application/pdf', filename, docType, session });
+        return clinicalExtractor._extractViaGeminiVision({
+          buffer,
+          mimeType: 'application/pdf',
+          filename,
+          docType,
+          session,
+          auditLogger,
+        });
       }
 
-      // Send extracted text to Groq (fast, cheap, no vision needed)
       session?.emit({
         agent: 'agent_1',
         type: 'TOOL_CALL',
         tool: 'groq_text_parser',
-        message: `Sending ${parsed.charCount.toLocaleString()} chars of extracted text to Groq (llama-3.3-70b) for structured JSON extraction...`,
+        message: `Sending ${parsed.charCount.toLocaleString()} chars of extracted text to Groq for structured JSON extraction...`,
       });
+
+      const prompt = buildTextExtractionPrompt(docType, parsed.text, filename);
 
       try {
         const result = await aiService.generate({
           service: 'groq',
-          prompt: buildTextExtractionPrompt(docType, parsed.text, filename),
+          prompt,
           options: { temperature: 0.0, maxTokens: 2048 },
+          audit: {
+            logger: auditLogger,
+            phase: `agent_1_llm_${docType}`,
+            agent: 'agent_1',
+            inputSnapshot: {
+              filename,
+              doc_type: docType,
+              extraction_method: methodLabel,
+            },
+          },
         });
 
-        const serviceMap = parseServiceMap(result.text);
+        const serviceMap = normalizeServiceMap(parseServiceMap(result.text));
+        auditExtractionResult({
+          auditLogger,
+          docType,
+          filename,
+          llmService: 'groq',
+          prompt,
+          rawResponseText: result.text,
+          parsedServiceMap: serviceMap,
+          rawExtractedText: parsed.text,
+          extractionMethod: methodLabel,
+        });
 
         session?.emit({
           agent: 'agent_1',
           type: 'TOOL_RESULT',
           tool: 'groq_text_parser',
-          message: `✅ Structured extraction complete via Groq — patient: ${serviceMap.metadata.patient_id ?? 'unknown'}, CPTs: [${serviceMap.triangulation_data.billing.cpt_codes.join(', ') || 'none detected'}]`,
+          message: `Structured extraction complete via Groq - patient: ${serviceMap.metadata.patient_id ?? 'unknown'}, CPTs: [${serviceMap.triangulation_data.billing.cpt_codes.join(', ') || 'none detected'}]`,
         });
 
         return serviceMap;
       } catch (groqErr) {
-        // Groq failed — fall back to Gemini text-only
         session?.emit({
           agent: 'agent_1',
           type: 'AGENT_THINKING',
-          message: `Groq parsing failed, retrying with Gemini text mode...`,
+          message: 'Groq parsing failed, retrying with Gemini text mode...',
         });
 
         const geminiTextResult = await aiService.generate({
           service: 'google',
-          prompt: buildTextExtractionPrompt(docType, parsed.text, filename),
+          prompt,
           options: { temperature: 0.0, maxTokens: 2048 },
+          audit: {
+            logger: auditLogger,
+            phase: `agent_1_llm_${docType}`,
+            agent: 'agent_1',
+            inputSnapshot: {
+              filename,
+              doc_type: docType,
+              extraction_method: `${methodLabel} -> Gemini text fallback`,
+            },
+            issues: [{ code: 'GROQ_FALLBACK', message: (groqErr as Error).message }],
+          },
         });
 
-        return parseServiceMap(geminiTextResult.text);
+        const fallbackMap = normalizeServiceMap(parseServiceMap(geminiTextResult.text));
+        auditExtractionResult({
+          auditLogger,
+          docType,
+          filename,
+          llmService: 'google',
+          prompt,
+          rawResponseText: geminiTextResult.text,
+          parsedServiceMap: fallbackMap,
+          rawExtractedText: parsed.text,
+          extractionMethod: `${methodLabel} -> Gemini text fallback`,
+          issues: [{ code: 'GROQ_FALLBACK', message: (groqErr as Error).message }],
+        });
+
+        return fallbackMap;
       }
-
-    } else {
-      // ── VISION PATH (images, unknown types) ───────────────────────────
-      session?.emit({
-        agent: 'agent_1',
-        type: 'TOOL_CALL',
-        tool: 'gemini_vision',
-        message: `🖼️ ${filename} is an image (${mimeType}) — sending to Google Gemini Vision for OCR extraction...`,
-      });
-
-      const serviceMap = await clinicalExtractor._extractViaGeminiVision({ buffer, mimeType, filename, docType, session });
-
-      session?.emit({
-        agent: 'agent_1',
-        type: 'TOOL_RESULT',
-        tool: 'gemini_vision',
-        message: `✅ Vision OCR complete — patient: ${serviceMap.metadata.patient_id ?? 'unknown'}, CPTs: [${serviceMap.triangulation_data.billing.cpt_codes.join(', ') || 'none detected'}]`,
-      });
-
-      return serviceMap;
     }
+
+    session?.emit({
+      agent: 'agent_1',
+      type: 'TOOL_CALL',
+      tool: 'gemini_vision',
+      message: `${filename} is an image (${mimeType}) - sending to Google Gemini Vision for OCR extraction...`,
+    });
+
+    const serviceMap = await clinicalExtractor._extractViaGeminiVision({
+      buffer,
+      mimeType,
+      filename,
+      docType,
+      session,
+      auditLogger,
+    });
+
+    session?.emit({
+      agent: 'agent_1',
+      type: 'TOOL_RESULT',
+      tool: 'gemini_vision',
+      message: `Vision OCR complete - patient: ${serviceMap.metadata.patient_id ?? 'unknown'}, CPTs: [${serviceMap.triangulation_data.billing.cpt_codes.join(', ') || 'none detected'}]`,
+    });
+
+    return serviceMap;
   },
 
-  /** Internal: send a buffer to Gemini Vision */
   _extractViaGeminiVision: async (input: {
     buffer: Buffer;
     mimeType: string;
     filename: string;
     docType: string;
     session?: AgentSession;
+    auditLogger?: PipelineAuditLogger;
   }): Promise<ServiceMap> => {
-    const { buffer, mimeType, filename, docType, session } = input;
+    const { buffer, mimeType, filename, docType, auditLogger } = input;
     const base64 = buffer.toString('base64');
+    const prompt = buildVisionPrompt(docType);
 
     try {
       const result = await aiService.generate({
         service: 'google',
-        prompt: buildVisionPrompt(docType),
+        prompt,
         attachments: [{ filename, mimeType, dataBase64: base64 }],
         options: { temperature: 0.1, maxTokens: 2048 },
+        audit: {
+          logger: auditLogger,
+          phase: `agent_1_llm_${docType}`,
+          agent: 'agent_1',
+          inputSnapshot: {
+            filename,
+            doc_type: docType,
+            extraction_method: 'Gemini Vision OCR',
+          },
+        },
       });
-      return parseServiceMap(result.text);
+
+      const serviceMap = normalizeServiceMap(parseServiceMap(result.text));
+      auditExtractionResult({
+        auditLogger,
+        docType: docType as ExtractionInput['docType'],
+        filename,
+        llmService: 'google',
+        prompt,
+        rawResponseText: result.text,
+        parsedServiceMap: serviceMap,
+        rawExtractedText: null,
+        extractionMethod: 'Gemini Vision OCR',
+      });
+
+      return serviceMap;
     } catch (googleErr) {
-      // Fallback: Groq text-only (no attachment support)
-      console.warn('[ClinicalExtractor] Gemini Vision failed — falling back to Groq text-only:', googleErr);
+      console.warn('[ClinicalExtractor] Gemini Vision failed - falling back to Groq text-only:', googleErr);
+      const fallbackPrompt = `${buildVisionPrompt(docType)}\n\nNote: Image could not be attached. Filename: "${filename}". Extract what you can; use null for all unknown fields.`;
       const fallback = await aiService.generate({
         service: 'groq',
-        prompt: `${buildVisionPrompt(docType)}\n\nNote: Image could not be attached. Filename: "${filename}". Extract what you can; use null for all unknown fields.`,
+        prompt: fallbackPrompt,
         options: { temperature: 0.1, maxTokens: 2048 },
+        audit: {
+          logger: auditLogger,
+          phase: `agent_1_llm_${docType}`,
+          agent: 'agent_1',
+          inputSnapshot: {
+            filename,
+            doc_type: docType,
+            extraction_method: 'Gemini Vision -> Groq text fallback',
+          },
+          issues: [{ code: 'VISION_FALLBACK', message: (googleErr as Error).message }],
+        },
       });
-      return parseServiceMap(fallback.text);
+
+      const fallbackMap = normalizeServiceMap(parseServiceMap(fallback.text));
+      auditExtractionResult({
+        auditLogger,
+        docType: docType as ExtractionInput['docType'],
+        filename,
+        llmService: 'groq',
+        prompt: fallbackPrompt,
+        rawResponseText: fallback.text,
+        parsedServiceMap: fallbackMap,
+        rawExtractedText: null,
+        extractionMethod: 'Gemini Vision -> Groq text fallback',
+        issues: [{ code: 'VISION_FALLBACK', message: (googleErr as Error).message }],
+      });
+
+      return fallbackMap;
     }
   },
 };
