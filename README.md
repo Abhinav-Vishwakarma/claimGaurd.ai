@@ -22,6 +22,25 @@
 
 ---
 
+## 🧪 Demo / Testing Credentials
+
+You can use the following credentials to test the platform:
+
+**Admin Role**
+- Email: `admin@claimguard.com`
+- Password: `123456789`
+
+**Client Roles**
+- Email: `rohan@gmail.com`
+- Password: `12345678`
+- Email: `suresh@gmail.com`
+- Password: `12345678`
+
+**Test Documents**
+Sample test documents (PDF, DOCX, images) for uploading and processing can be found in the `Test_Docs/` folder in the root directory.
+
+---
+
 ## ✨ Key Features
 
 | Feature | Description |

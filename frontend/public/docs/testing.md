@@ -4,6 +4,25 @@ ClaimGuard.ai maintains a backend test suite using **Jest** and a frontend test 
 
 ---
 
+## 🧪 Demo / Testing Credentials
+
+You can use the following credentials to login and test the platform:
+
+**Admin Role**
+- Email: `admin@claimguard.com`
+- Password: `123456789`
+
+**Client Roles**
+- Email: `rohan@gmail.com`
+- Password: `12345678`
+- Email: `suresh@gmail.com`
+- Password: `12345678`
+
+**Test Documents**
+Sample test documents for uploading and processing can be found in the `Test_Docs/` folder in the root directory.
+
+---
+
 ## Backend Testing (Jest + ts-jest)
 
 ### Setup
