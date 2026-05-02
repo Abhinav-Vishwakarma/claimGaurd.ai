@@ -111,6 +111,10 @@ Uploaded Documents (PDF / DOCX / Image)
   APPROVED ✅  /  FLAGGED ⚠️  /  REJECTED ❌
 ```
 
+## Data Flow Diagram
+
+![Alt text](./frontend/public/diagrams/dfd.png)
+
 ---
 
 ## 🛠️ Tech Stack
@@ -218,7 +222,7 @@ cd claimguard-ai
 
 ```bash
 cd backend
-docker-compose up -d   # starts PostgreSQL, Redis, Qdrant locally
+docker compose up -d   # starts PostgreSQL, Redis, Qdrant locally
 ```
 
 ### 3. Backend Setup
@@ -232,14 +236,15 @@ cp .env.example .env
 # → Fill in DATABASE_URL, GEMINI_API_KEY, GROQ_API_KEY, QDRANT_URL, etc.
 
 # Apply database schema
-npx prisma migrate dev
+npm run prisma:generate
+npm run prisma:migrate
 
 # Embed rules into Qdrant vector store
 npm run rag:index-rules
 
 # Start development server
 npm run dev
-# → http://localhost:3001
+# → http://localhost:5000
 ```
 
 ### 4. Frontend Setup
@@ -249,7 +254,7 @@ cd ../frontend
 npm install
 
 # Configure environment
-echo "VITE_API_URL=http://localhost:3001" > .env
+echo "VITE_API_URL=http://localhost:5000/api/v1" > .env
 
 # Start development server
 npm run dev
@@ -259,7 +264,7 @@ npm run dev
 ### 5. Verify
 
 ```bash
-curl http://localhost:3001/api/health
+curl http://localhost:5000/api/v1/health
 # → { "status": "ok", "services": { "database": "connected", "redis": "connected" } }
 ```
 
@@ -270,40 +275,46 @@ curl http://localhost:3001/api/health
 ### Backend (`.env`)
 
 ```env
-# Server
+# Application
 NODE_ENV=development
-PORT=3001
+PORT=5000
 
-# Database
+# PostgreSQL (via Prisma)
 DATABASE_URL="postgresql://user:password@localhost:5432/claimguard"
 
-# JWT
-JWT_SECRET=your_jwt_secret
-JWT_REFRESH_SECRET=your_refresh_secret
+# JWT Secrets
+JWT_SECRET=your_jwt_secret_here
+JWT_REFRESH_SECRET=your_refresh_secret_here
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 
-# Redis
+# Redis (for BullMQ queues)
 REDIS_HOST=localhost
 REDIS_PORT=6379
 
-# Qdrant
-QDRANT_URL=https://your-cluster.cloud.qdrant.io
+# Qdrant (Vector DB)
+QDRANT_URL=https://your-qdrant-cluster.cloud.qdrant.io
 QDRANT_API_KEY=your_qdrant_api_key
 QDRANT_COLLECTION_NAME=claim_rules
 
-# AI Services
+# Google Gemini (Extraction + Vision OCR)
 GEMINI_API_KEY=your_google_gemini_api_key
-GROQ_API_KEY=your_groq_api_key
+GOOGLE_EMBEDDING_MODEL=gemini-embedding-001
 
-# File Storage
+# Groq (Fraud Detection LLM)
+GROQ_API_KEY=your_groq_api_key
+GROQ_DEFAULT_MODEL=llama-3.3-70b-versatile
+
+# UploadThing (File Storage)
 UPLOADTHING_TOKEN=your_uploadthing_token
+UPLOADTHING_SECRET=your_uploadthing_secret
+UPLOADTHING_APP_ID=your_uploadthing_app_id
 ```
 
 ### Frontend (`.env`)
 
 ```env
-VITE_API_URL=http://localhost:3001
+VITE_API_URL=http://localhost:5000/api/v1
 ```
 
 ---
@@ -319,6 +330,7 @@ npm run start            # Run compiled production build
 npm test                 # Run Jest test suite
 npm run test:watch       # Jest in watch mode
 npm run rag:index-rules  # Embed rules.json into Qdrant
+npm run prisma:generate  # Generate Prisma client
 npm run prisma:migrate   # Run Prisma migrations
 npm run prisma:studio    # Open Prisma Studio (DB GUI)
 ```
@@ -429,25 +441,6 @@ To add a new condition: edit `rules.json` → run `npm run rag:index-rules`.
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -m 'feat: add your feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
-
-Please follow the existing code style and include tests for new agent logic.
-
----
-
-## 📄 License
-
-This project is licensed under the **ISC License** — see the [LICENSE](LICENSE) file for details.
-
----
 
 <div align="center">
 

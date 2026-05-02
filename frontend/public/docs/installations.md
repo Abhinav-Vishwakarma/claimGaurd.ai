@@ -8,14 +8,15 @@ ClaimGuard.ai is a multi-service application composed of three independently run
 
 Before you begin, make sure the following are installed on your machine:
 
-| Dependency | Version | Purpose |
-|---|---|---|
-| Node.js | >= 18.x | Backend + Frontend |
-| npm | >= 9.x | Package management |
-| PostgreSQL | >= 15 | Primary relational database |
-| Qdrant | >= 1.7 | Vector search database |
-| Redis | >= 7.x | Job queues (BullMQ) and session caching |
-| Git | any | Cloning the repository |
+| Dependency | Version   | Purpose                          |
+|------------|-----------|----------------------------------|
+| Node.js    | >= 18.x   | Backend + Frontend               |
+| npm        | >= 9.x    | Package management               |
+| PostgreSQL | >= 15     | Primary relational database      |
+| Qdrant     | >= 1.7    | Vector search database           |
+| Redis      | >= 7.x    | Job queues (BullMQ) and caching  |
+| Git        | any       | Cloning the repository           |
+| Docker     | >= 20.x   | Containerizing the infrastructure|
 
 ---
 
@@ -46,7 +47,7 @@ Create a `.env` file in the `backend/` directory. Use the template below:
 ```env
 # Application
 NODE_ENV=development
-PORT=3001
+PORT=5000
 
 # PostgreSQL (via Prisma)
 DATABASE_URL="postgresql://user:password@localhost:5432/claimguard"
@@ -68,25 +69,26 @@ QDRANT_COLLECTION_NAME=claim_rules
 
 # Google Gemini (Extraction + Vision OCR)
 GEMINI_API_KEY=your_google_gemini_api_key
+GOOGLE_EMBEDDING_MODEL=gemini-embedding-001
 
 # Groq (Fraud Detection LLM)
 GROQ_API_KEY=your_groq_api_key
+GROQ_DEFAULT_MODEL=llama-3.3-70b-versatile
 
 # UploadThing (File Storage)
 UPLOADTHING_TOKEN=your_uploadthing_token
+UPLOADTHING_SECRET=your_uploadthing_secret
+UPLOADTHING_APP_ID=your_uploadthing_app_id
 ```
 
 ### Initialize the Database with Prisma
 
 ```bash
 # Generate Prisma client
-npx prisma generate
+npm run prisma:generate
 
 # Run all migrations
-npx prisma migrate dev
-
-# (Optional) Seed the database
-npx prisma db push
+npm run prisma:migrate
 ```
 
 ### Index Rules into Qdrant
@@ -105,7 +107,7 @@ This script reads `src/data/rules.json`, generates Google embeddings for each co
 npm run dev
 ```
 
-The backend will be available at `http://localhost:3001`.
+The backend will be available at `http://localhost:5000`.
 
 ---
 
@@ -125,7 +127,7 @@ npm install
 Create a `.env` file in the `frontend/` directory:
 
 ```env
-VITE_API_URL=http://localhost:3001
+VITE_API_URL=http://localhost:5000/api/v1
 ```
 
 ### Start the Vite Dev Server
@@ -161,10 +163,15 @@ You can then run the backend and frontend natively while the infrastructure runs
 For a clean startup, follow this sequence:
 
 1. Start Docker services (PostgreSQL, Redis, Qdrant)
-2. Run `npx prisma migrate dev` to apply schema
+`docker-compose up -d`
+2. Run `npm run prisma:migrate` to apply schema
+npm run prisma:migrate
 3. Run `npm run rag:index-rules` to populate Qdrant
+npm run rag:index-rules
 4. Start backend: `npm run dev` (in `backend/`)
+npm run dev
 5. Start frontend: `npm run dev` (in `frontend/`)
+npm run dev
 
 ---
 
@@ -174,7 +181,7 @@ Once everything is running, verify with:
 
 ```bash
 # Health check endpoint
-curl http://localhost:3001/api/health
+curl http://localhost:5000/api/v1/health
 ```
 
 Expected response:

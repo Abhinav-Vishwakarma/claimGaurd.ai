@@ -47,17 +47,20 @@ Visual representations of ClaimGuard.ai's architecture and data flow.
 └────────────┘         └──────────────┘  │                  │
                                          │  UploadThing     │
                                          │  (File Storage)  │
-┌────────────┐                           └──────────────────┘
-│   Redis    │
-│  (BullMQ)  │
-│            │
-│ - Job Q    │
-│ - Sessions │
-└────────────┘
+                                         └──────────────────┘
+
 ```
 
 ---
+## Data Model Diagram
 
+![Alt text](../diagrams/dbd.png)
+
+---
+
+## Data Flow Diagram
+
+![Alt text](../diagrams/dfd.png)
 ## AI Pipeline Flow Diagram
 
 ```
@@ -145,45 +148,7 @@ Uploaded Documents
 
 ---
 
-## Data Model Diagram
 
-```
-User
-├── id (UUID)
-├── email
-├── name
-├── role: CLIENT | ADMIN | HOSPITAL
-└── claims[] → Claim
-
-Claim
-├── id (UUID)
-├── status: PENDING | UNDER_REVIEW | APPROVED | REJECTED | FLAGGED
-├── prescriptionUrl
-├── billUrl
-├── labReportUrl
-├── aiAnalysisResult (JSON blob — all 4 agent outputs)
-├── adminDecision (JSON — decision + remarks + timestamp)
-├── createdAt / updatedAt
-└── paymentRequests[] → PaymentRequest
-
-MemberProfile
-├── memberId (e.g., "MBR-00123")
-├── policyActive (bool)
-├── premiumPaid (bool)
-├── planType: PPO | HMO | Medicare | Medicaid
-├── copay
-├── coinsuranceRate
-└── coverageLimit
-
-PaymentRequest
-├── id (UUID)
-├── claimId → Claim
-├── amount
-├── status: PENDING | PROCESSED | REJECTED
-└── processedAt
-```
-
----
 
 ## Product Architecture
 
