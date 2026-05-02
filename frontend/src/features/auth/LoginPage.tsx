@@ -8,13 +8,15 @@ import { useLogin } from "./auth.hooks";
 import { AuthCard } from "./components/AuthCard";
 import { FormField } from "./components/FormField";
 import { AuthShell } from "./components/AuthShell";
+import type { UseLanguageResult } from "../../hooks/useLanguage";
 
 type LoginPageProps = {
   content: LandingContent;
+  language: UseLanguageResult;
   theme: UseThemeResult;
 };
 
-export function LoginPage({ content, theme }: LoginPageProps) {
+export function LoginPage({ content, language, theme }: LoginPageProps) {
   const login = useLogin();
   const [form, setForm] = useState({ email: "", password: "" });
 
@@ -24,7 +26,7 @@ export function LoginPage({ content, theme }: LoginPageProps) {
   };
 
   return (
-    <AuthShell content={content} theme={theme}>
+    <AuthShell content={content} language={language} theme={theme}>
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 

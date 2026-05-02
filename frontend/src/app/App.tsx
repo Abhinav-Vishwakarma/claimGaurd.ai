@@ -15,9 +15,9 @@ export function App() {
   const path = usePath();
   const content = landingContent[language.locale];
 
-  if (path === "/login") return <LoginPage content={content} theme={theme} />;
-  if (path === "/register") return <RegisterPage content={content} theme={theme} />;
-  if (path === "/home") return <HomePage content={content} theme={theme} />;
+  if (path === "/login") return <LoginPage content={content} language={language} theme={theme} />;
+  if (path === "/register") return <RegisterPage content={content} language={language} theme={theme} />;
+  if (path === "/home") return <HomePage content={content} language={language} theme={theme} />;
   if (path.startsWith("/dashboard")) return <DashboardDispatcher />;
   if (path.startsWith("/docs")) return <DocsPage theme={theme} language={language} />;
 

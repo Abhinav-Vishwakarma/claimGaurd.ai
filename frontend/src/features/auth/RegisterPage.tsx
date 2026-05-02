@@ -9,9 +9,11 @@ import type { Role } from "./auth.types";
 import { AuthCard } from "./components/AuthCard";
 import { AuthShell } from "./components/AuthShell";
 import { FormField } from "./components/FormField";
+import type { UseLanguageResult } from "../../hooks/useLanguage";
 
 type RegisterPageProps = {
   content: LandingContent;
+  language: UseLanguageResult;
   theme: UseThemeResult;
 };
 
@@ -20,7 +22,7 @@ const roles: Array<{ value: Role; label: string }> = [
   { value: "HOSPITAL", label: "Hospital" },
 ];
 
-export function RegisterPage({ content, theme }: RegisterPageProps) {
+export function RegisterPage({ content, language, theme }: RegisterPageProps) {
   const register = useRegister();
   const [form, setForm] = useState({ email: "", password: "", name: "", role: "CLIENT" as Role });
 
@@ -30,7 +32,7 @@ export function RegisterPage({ content, theme }: RegisterPageProps) {
   };
 
   return (
-    <AuthShell content={content} theme={theme}>
+    <AuthShell content={content} language={language} theme={theme}>
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 

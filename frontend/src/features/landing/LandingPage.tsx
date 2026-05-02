@@ -4,6 +4,7 @@ import { Navbar } from "../../components/layout/Navbar";
 import { landingContent } from "../../content/landing";
 import type { UseLanguageResult } from "../../hooks/useLanguage";
 import type { UseThemeResult } from "../../hooks/useTheme";
+import { useLogout, useMe } from "../auth/auth.hooks";
 import { CtaSection } from "./components/CtaSection";
 import { FeatureGrid } from "./components/FeatureGrid";
 import { HeroSection } from "./components/HeroSection";
@@ -17,10 +18,19 @@ type LandingPageProps = {
 
 export function LandingPage({ language, theme }: LandingPageProps) {
   const content = landingContent[language.locale];
+  const me = useMe();
+  const logout = useLogout();
+  const user = me.data?.user;
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
-      <Navbar content={content} language={language} theme={theme} />
+      <Navbar
+        content={content}
+        language={language}
+        onLogout={() => logout.mutate()}
+        theme={theme}
+        user={user ? { email: user.email, role: user.role } : undefined}
+      />
       <main id="top" className="flex flex-col gap-16 md:gap-24 mb-24">
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
           <HeroSection content={content.hero} />

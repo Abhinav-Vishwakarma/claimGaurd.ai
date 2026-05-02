@@ -11,12 +11,17 @@ type DocsPageProps = {
 };
 
 const DOCS_LIST = [
-  { id: "installations", title: "Installations and Setup" },
+  { id: "installations", title: "Installation & Setup" },
   { id: "knowledge-base", title: "The Knowledge Base" },
-  { id: "diagrams", title: "System Diagrams" },
+  { id: "rules-schema", title: "Rules & Logic Schema" },
+  { id: "vector-db", title: "Vector Database (Qdrant)" },
+  { id: "architecture", title: "System Architecture" },
+  { id: "pipeline", title: "AI Pipeline Flow" },
   { id: "technical-implementation", title: "Technical Implementation" },
+  { id: "testing", title: "Testing Suite" },
   { id: "api-docs", title: "API Documentation" },
   { id: "prompts", title: "Prompts Used" },
+  { id: "diagrams", title: "System Diagrams" },
 ];
 
 export function DocsPage({ language, theme }: DocsPageProps) {
