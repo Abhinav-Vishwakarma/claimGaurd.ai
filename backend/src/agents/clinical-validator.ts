@@ -22,9 +22,26 @@ BILLED CPT CODES: ${billedCpts.join(', ')}
 TOTAL BILLED AMOUNT: ${billedAmount != null ? `$${billedAmount}` : 'Unknown'}
 KNOWN FRAUD PATTERNS FOR THIS CONDITION: ${reasoningTraps.join('; ')}
 
+EXPLICIT UNBUNDLING RULES:
+Do NOT flag unbundling if:
+- CPT codes belong to different categories (e.g., evaluation, lab, imaging, therapy).
+- No single comprehensive CPT exists that replaces them.
+- Services are independently performed and medically necessary based on the condition.
+
+SELF-QUESTIONING LOGIC:
+Before formulating your final response, internally ask yourself:
+1. Is ICD billable and specific?
+2. Are all CPT codes allowed for this condition?
+3. Do CPT codes match prescription + lab reports?
+4. Are CPT codes independent or part of a bundle?
+5. Is visit level justified?
+6. Are tests medically necessary?
+7. Is cost reasonable vs context?
+8. Any mismatch or anomaly?
+
 STRICT RULES:
 1. Return ONLY a raw JSON object — NO markdown, NO code fences, NO explanation.
-2. Analyze specifically for UPCODING and UNBUNDLING.
+2. Analyze specifically for UPCODING and UNBUNDLING based on your self-questioning analysis.
 
 Return exactly this JSON:
 {
@@ -38,7 +55,7 @@ Return exactly this JSON:
     "description": "<one sentence explanation or 'No unbundling detected'>",
     "severity": "HIGH or MEDIUM or LOW or NONE"
   },
-  "ai_reasoning": "<2-3 sentence overall fraud assessment>"
+  "ai_reasoning": "<Provide a step-by-step summary of your self-questioning deductions before concluding>"
 }`;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
